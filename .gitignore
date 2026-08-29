@@ -1,0 +1,12 @@
+.env
+.env.local
+.env.*.local
+.next/
+node_modules/
+.pnpm-store/
+coverage/
+.vercel/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+/.swc

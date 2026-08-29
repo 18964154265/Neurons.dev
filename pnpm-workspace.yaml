@@ -1,0 +1,8 @@
+allowBuilds:
+  '@swc/core': true
+  cbor-extract: false
+  esbuild: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - lucide-react@1.37.0
+  - zod@4.5.2
