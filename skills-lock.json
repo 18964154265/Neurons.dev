@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "skills": {
+    "ai-sdk": {
+      "source": "vercel/ai",
+      "sourceType": "github",
+      "skillPath": "skills/use-ai-sdk/SKILL.md",
+      "computedHash": "da25c27a274ef2b71017c255f95a26350d2519765a75cb54ee1a37872b121dab"
+    },
+    "feature-arch": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/feature-arch/SKILL.md",
+      "computedHash": "41e9907a435f1e4c81f33ab7640be74de95de13121287132ad70f7cd152606a7"
+    },
+    "frontend-design": {
+      "source": "Hitbullets/codex-skills",
+      "sourceType": "github",
+      "skillPath": "codex-frontend-design/skills/frontend-design/SKILL.md",
+      "computedHash": "292e6a5473b4f571fa5a1ad0fb7e060da2dd5c87f9acc3a75a89e22b4ee96ad3"
+    },
+    "llm-security": {
+      "source": "semgrep/skills",
+      "sourceType": "github",
+      "skillPath": "skills/llm-security/SKILL.md",
+      "computedHash": "c6f01f4b16c45c4a68aa7679ada409647435207d3bce7185d8fa62be9dbe7553"
+    },
+    "nextjs": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs/SKILL.md",
+      "computedHash": "ab54ed432b8301a2b718d8bc44ef91666a65f1963fcf6316e6016aef34dc66b1"
+    },
+    "playwright": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/playwright/SKILL.md",
+      "computedHash": "a52e3edc5bc5875ec1999f08746fc8eaffd7934be76081e3ca1350bf62d75f11"
+    },
+    "react": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react/SKILL.md",
+      "computedHash": "c7e93b99ad5ae0d833b8e7e7b03333b9bad2bfd31f7a11cd445aa7eef452a6b4"
+    },
+    "shadcn": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/shadcn/SKILL.md",
+      "computedHash": "78545c45b6f9c99229ce8a0a4a1135d10553df83beda2b0c5fb8706e86b86d35"
+    },
+    "supabase": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase/SKILL.md",
+      "computedHash": "583344c20e90f3654dbb0632f088d89fd9f1dde8ac85e8a644dd12eee59b1380"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
+      "computedHash": "e14e276241805c97dbcfe40dcbea1a3035269cc7293cac4b1832dda41a835e60"
+    },
+    "tailwind": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/tailwind/SKILL.md",
+      "computedHash": "ad40283c3138edf1a48db9f65b1b6a09aae35c6ca911ab35d6a5ea5beb66a04d"
+    },
+    "tanstack-query": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/tanstack-query/SKILL.md",
+      "computedHash": "bbafe91732357b9d9d127c717056bdbde5a0ee419e555aa798bffeb1df5b1cb4"
+    },
+    "typescript": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/typescript/SKILL.md",
+      "computedHash": "5ae7181a9569d9be1bc4e3f28035a5850866d331cd28608ac948d07e7db4134c"
+    },
+    "vercel-composition-patterns": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vercel-composition-patterns/SKILL.md",
+      "computedHash": "ef3a4477614296d6911b228e557a04ceb94129d1a2544ba153d9599065b00c22"
+    },
+    "vercel-react-best-practices": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vercel-react-best-practices/SKILL.md",
+      "computedHash": "b542a86ddd3060d952f5bd5011f60800eb92c68b124d4bf4b41bf31f4e20ce80"
+    },
+    "zod": {
+      "source": "Pythoughts-labs/react-frontend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/zod/SKILL.md",
+      "computedHash": "00d48777a99fbf08df9f2f809cd18125601eae142bc62a395630e8fd1b59af96"
+    }
+  }
+}
