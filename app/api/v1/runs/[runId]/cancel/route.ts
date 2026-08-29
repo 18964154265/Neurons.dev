@@ -3,6 +3,7 @@ import { z } from "zod";
 import { errorResponse } from "@/lib/http/errors";
 import { requestId as resolveRequestId, requireIdempotencyKey } from "@/lib/http/request";
 import { RunRepository } from "@/lib/runs/repository";
+import { cancelAgentRunWorkflow } from "@/lib/runs/workflow";
 import { requireUser } from "@/lib/supabase/server";
 
 type RouteContext = { params: Promise<{ runId: string }> };
@@ -15,7 +16,14 @@ export async function POST(request: Request, context: RouteContext) {
     const validRunId = z.string().uuid().parse(runId);
     const { supabase } = await requireUser();
     const repository = new RunRepository(supabase);
-    const result = await repository.cancel(validRunId);
+    const run = await repository.get(validRunId);
+    const cancellation = await repository.cancel(validRunId);
+    if (!cancellation.alreadyTerminal && run.workflowRunId) {
+      await cancelAgentRunWorkflow(run.workflowRunId);
+    }
+    const result = cancellation.alreadyTerminal
+      ? cancellation
+      : await repository.confirmCancelled(validRunId);
     return Response.json({ data: result, requestId }, { status: 202 });
   } catch (error) {
     return errorResponse(error, requestId);

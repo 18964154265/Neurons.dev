@@ -7,6 +7,8 @@ import {
 import { ProjectRepository } from "@/lib/projects/repository";
 import { createProjectSchema } from "@/lib/projects/schemas";
 import { ProjectService } from "@/lib/projects/service";
+import { RunRepository } from "@/lib/runs/repository";
+import { startPersistedAgentRun } from "@/lib/runs/service";
 import { requireUser } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -32,6 +34,9 @@ export async function POST(request: Request) {
     const { supabase } = await requireUser();
     const service = new ProjectService(new ProjectRepository(supabase));
     const result = await service.create(input, idempotencyKey);
+    if (!result.reused) {
+      await startPersistedAgentRun(result.runId, new RunRepository(supabase));
+    }
 
     return Response.json(
       { data: result, requestId },

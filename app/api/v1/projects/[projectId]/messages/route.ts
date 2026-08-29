@@ -7,6 +7,8 @@ import {
   requireIdempotencyKey,
 } from "@/lib/http/request";
 import { projectIdSchema } from "@/lib/projects/schemas";
+import { RunRepository } from "@/lib/runs/repository";
+import { startPersistedAgentRun } from "@/lib/runs/service";
 import { requireUser } from "@/lib/supabase/server";
 
 type RouteContext = { params: Promise<{ projectId: string }> };
@@ -38,6 +40,9 @@ export async function POST(request: Request, context: RouteContext) {
     const { supabase } = await requireUser();
     const repository = new ChatRepository(supabase);
     const result = await repository.send(validProjectId, input, idempotencyKey);
+    if (!result.reused) {
+      await startPersistedAgentRun(result.runId, new RunRepository(supabase));
+    }
     return Response.json(
       { data: result, requestId },
       { status: result.reused ? 200 : 202 },
