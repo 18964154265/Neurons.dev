@@ -1,0 +1,35 @@
+[
+  {
+    "description": "已登录用户使用幂等键创建项目",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "create-project-001" },
+    "body": {
+      "initialMessage": "创建一个任务看板",
+      "mode": "engineer",
+      "scheduleStrategy": "automatic",
+      "agentKeys": []
+    },
+    "expectedStatus": 201,
+    "expectedSideEffects": ["project", "conversation", "message", "agent_run", "outbox_event", "workflow_run"]
+  },
+  {
+    "description": "重复的相同请求返回原资源",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "create-project-001" },
+    "body": {
+      "initialMessage": "创建一个任务看板",
+      "mode": "engineer",
+      "scheduleStrategy": "automatic",
+      "agentKeys": []
+    },
+    "expectedStatus": 200,
+    "expected": { "reused": true }
+  },
+  {
+    "description": "未登录用户不能读取项目列表",
+    "method": "GET",
+    "auth": null,
+    "expectedStatus": 401,
+    "expectedError": "AUTH_REQUIRED"
+  }
+]

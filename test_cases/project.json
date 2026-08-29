@@ -1,0 +1,23 @@
+[
+  {
+    "description": "Owner 可以读取自己的项目",
+    "method": "GET",
+    "params": { "projectId": "00000000-0000-4000-8000-000000000001" },
+    "expectedStatus": 200
+  },
+  {
+    "description": "非 Owner 得到统一的项目不存在响应",
+    "method": "GET",
+    "params": { "projectId": "00000000-0000-4000-8000-000000000001" },
+    "auth": { "userId": "00000000-0000-4000-8000-000000000099" },
+    "expectedStatus": 404,
+    "expectedError": "PROJECT_NOT_FOUND"
+  },
+  {
+    "description": "旧 revision 更新会被拒绝",
+    "method": "PATCH",
+    "body": { "name": "New name", "revision": 1 },
+    "expectedStatus": 409,
+    "expectedError": "PROJECT_REVISION_CONFLICT"
+  }
+]

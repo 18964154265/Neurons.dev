@@ -1,0 +1,16 @@
+[
+  {
+    "description": "运行中的 Run 取消 Workflow 并确认 cancelled",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "cancel-run-001" },
+    "expectedStatus": 202,
+    "expected": { "status": "cancelled", "alreadyTerminal": false }
+  },
+  {
+    "description": "重复取消终态 Run 不伪造新状态",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "cancel-run-002" },
+    "expectedStatus": 202,
+    "expected": { "alreadyTerminal": true }
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "description": "Owner 可以读取 Run 状态",
+    "method": "GET",
+    "expectedStatus": 200
+  },
+  {
+    "description": "无效 UUID 被请求校验拒绝",
+    "method": "GET",
+    "params": { "runId": "not-a-uuid" },
+    "expectedStatus": 400,
+    "expectedError": "INVALID_REQUEST"
+  }
+]

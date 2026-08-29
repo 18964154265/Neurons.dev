@@ -1,0 +1,16 @@
+[
+  {
+    "description": "断线后按 sequence 补拉事件",
+    "method": "GET",
+    "query": { "after": 42, "limit": 100 },
+    "expectedStatus": 200,
+    "expectedOrder": "sequence ascending"
+  },
+  {
+    "description": "非 Owner 无法读取 Trace",
+    "method": "GET",
+    "auth": { "userId": "00000000-0000-4000-8000-000000000099" },
+    "expectedStatus": 200,
+    "expected": []
+  }
+]

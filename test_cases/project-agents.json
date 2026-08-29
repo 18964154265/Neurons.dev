@@ -1,0 +1,14 @@
+[
+  {
+    "description": "返回全部启用 Agent 及当前项目分配状态",
+    "method": "GET",
+    "expectedStatus": 200,
+    "expected": [{ "assigned": true }, { "assigned": false }]
+  },
+  {
+    "description": "Agent 注册表为空时返回真实空数组",
+    "method": "GET",
+    "expectedStatus": 200,
+    "expected": []
+  }
+]

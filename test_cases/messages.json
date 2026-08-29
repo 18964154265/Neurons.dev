@@ -1,0 +1,34 @@
+[
+  {
+    "description": "项目空闲时发送消息并创建 Run",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "send-message-001" },
+    "body": {
+      "message": "把按钮改成绿色",
+      "mode": "engineer",
+      "scheduleStrategy": "automatic",
+      "agentKeys": []
+    },
+    "expectedStatus": 202,
+    "expectedSideEffects": ["message", "agent_run", "outbox_event", "workflow_run"]
+  },
+  {
+    "description": "项目已有活跃 Run 时拒绝并发写入",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "send-message-002" },
+    "body": {
+      "message": "继续修改",
+      "mode": "engineer",
+      "scheduleStrategy": "automatic",
+      "agentKeys": []
+    },
+    "expectedStatus": 409,
+    "expectedError": "PROJECT_BUSY"
+  },
+  {
+    "description": "按 sequence 补拉消息",
+    "method": "GET",
+    "query": { "after": 8, "limit": 50 },
+    "expectedStatus": 200
+  }
+]
