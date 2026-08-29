@@ -106,6 +106,15 @@ describe("OpenRouterLLMClient", () => {
       }),
     ).toMatchObject({ defaultModel: "provider/model" });
   });
+
+  it("accepts the real environment model alias", () => {
+    expect(
+      readOpenRouterConfiguration({
+        OPENROUTER_API_KEY: "key",
+        OPENROUTER_MODEL: "provider/aliased-model",
+      }),
+    ).toMatchObject({ defaultModel: "provider/aliased-model" });
+  });
 });
 
 describe("runEngineerTurn", () => {

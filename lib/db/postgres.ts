@@ -6,7 +6,7 @@ let database: ReturnType<typeof postgres> | undefined;
 
 export function getDatabase() {
   if (database) return database;
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = process.env.DATABASE_URL ?? process.env.POSTGRESQL;
   if (!connectionString) {
     throw new Error("DATABASE_URL_MISSING");
   }

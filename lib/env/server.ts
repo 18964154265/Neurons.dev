@@ -23,10 +23,11 @@ export function getServerEnvironment(): ServerEnvironment {
   }
 
   cachedEnvironment = serverEnvironmentSchema.parse({
-    DATABASE_URL: process.env.DATABASE_URL,
+    DATABASE_URL: process.env.DATABASE_URL ?? process.env.POSTGRESQL,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL: process.env.OPENROUTER_BASE_URL,
-    OPENROUTER_DEFAULT_MODEL: process.env.OPENROUTER_DEFAULT_MODEL,
+    OPENROUTER_DEFAULT_MODEL:
+      process.env.OPENROUTER_DEFAULT_MODEL ?? process.env.OPENROUTER_MODEL,
     SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:

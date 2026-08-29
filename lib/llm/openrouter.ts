@@ -74,7 +74,7 @@ export function readOpenRouterConfiguration(
   return openRouterConfigurationSchema.parse({
     apiKey: environment.OPENROUTER_API_KEY,
     baseURL: environment.OPENROUTER_BASE_URL,
-    defaultModel: environment.OPENROUTER_DEFAULT_MODEL,
+    defaultModel: environment.OPENROUTER_DEFAULT_MODEL ?? environment.OPENROUTER_MODEL,
     appURL: environment.APP_URL,
   });
 }
