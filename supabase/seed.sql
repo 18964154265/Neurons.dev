@@ -1,0 +1,1 @@
+-- Agent definitions are intentionally empty until the reusable agent catalog is approved.
