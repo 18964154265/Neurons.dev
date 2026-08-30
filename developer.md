@@ -97,3 +97,10 @@
 - 涉及代码文件：`components/workspace/project-workspace.tsx`、`app/globals.css`。
 - 关键数据结构或方法：将 Canvas View Tabs、项目/版本、Publish、Follow 与 Agent 头像合并到单行 Toolbar；Tab 字号在组件实例上局部覆盖为 `16.5px`；Trace surface 增加高度约束，Trace 左栏使用独立纵向滚动。
 - 上下游影响与依赖：仅改变 Workspace 顶部布局、字号和 Trace 列表滚动容器，不改变 View 切换、Agent、Publish、Follow、Trace 查询或其他业务逻辑；继续复用现有响应式断点与 semantic CSS token。
+
+### fix(workspace): place canvas navigation in header
+
+- Commit：待提交
+- 涉及代码文件：`components/workspace/project-workspace.tsx`。
+- 关键数据结构或方法：将 Canvas 导航容器改为语义化 `header`，并在四个 View Tab 实例上局部覆盖 `14px` 字号，避免受全局样式优先级影响。
+- 上下游影响与依赖：仅影响 Editor、Terminal、Web Preview、Trace 四个导航按钮的层级和字体显示；不改变 View 状态、点击行为、Canvas 内容或任何后端依赖。

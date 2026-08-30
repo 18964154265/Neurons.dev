@@ -907,13 +907,13 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         className="canvas-pane"
         style={{ gridTemplateRows: "52px minmax(0, 1fr)" }}
       >
-        <div className="canvas-toolbar">
+        <header className="canvas-globalbar canvas-toolbar">
           <nav className="view-tabs" aria-label="画布视图">
             {views.map((item) => (
               <button
                 key={item.key}
                 className={view === item.key ? "active" : ""}
-                style={{ fontSize: "16.5px" }}
+                style={{ fontSize: "14px" }}
                 onClick={() => {
                   setView(item.key);
                   setFollow(false);
@@ -976,7 +976,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               ) : null}
             </div>
           </div>
-        </div>
+        </header>
 
         <div className={`canvas-content view-${view}`}>
           {view === "editor" ? (
