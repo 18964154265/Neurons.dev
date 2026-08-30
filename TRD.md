@@ -571,7 +571,7 @@ none → starting → ready
 当前提供两级 Preview：
 
 1. 静态 Preview（已接入）：浏览器从 `project_files` 选取 `index.html`（其次为 `public/index.html`、`src/index.html` 或首个 HTML），内联项目内相对路径 CSS/JavaScript，并以 `srcDoc` 写入无同源权限的 sandbox iframe。严格 CSP 禁止网络连接、表单提交、外部资源和宿主页面访问；文件 revision 变化后自动刷新，也可由用户手动刷新。
-2. Sandbox Preview（待接入）：React、Next.js、服务端路由、依赖安装等需要真实运行时的项目必须在 Vercel Sandbox 内启动开发服务器，再通过受控 Preview URL 展示。静态 Preview 不得冒充该能力。
+2. Sandbox Preview（已接入）：React、Next.js、Vite、服务端路由和依赖安装等需要真实运行时的项目，在 Vercel Sandbox 内通过 `preview_start` 启动 package script，暴露端口并通过受控 Preview URL 展示；静态 Preview 不得冒充该能力。
 
 ## 10. API 设计
 
@@ -792,57 +792,25 @@ type AgentDefinition = {
 - 当前持久 Workflow 同时支持 Engineer Mode 与 Team Mode。Engineer Mode 固定执行 Alex，并在运行时移除全部 Agent 调度工具；Team Mode 从初始队列开始，按 Tool Call 动态追加被调度 Agent，每次只有一个 Assignment 为 `active`，每次切换写入 `agent.handoff` Trace。
 - 当前 Tool Loop 最多 8 个模型回合；每次模型调用只对明确的瞬时 Provider 错误重试 3 次。单个 Workspace 文本文件最大 256 KiB，路径必须是项目根目录下的规范相对路径。
 
-#### 13.1.2 Mike — Team Lead（`mike@1`）
+#### 13.1.2 Agent 配置与职责
 
-- 描述：理解用户目标，拆分任务并协调团队交付。
-- 核心目标：判断任务规模和领域；生成最小任务图；选择 Agent；管理依赖、顺序、失败重试和汇总；向用户解释当前负责人和原因。
-- 能力标识：`project_context`、`agent_orchestration`、`workflow_state`、`result_synthesis`、`user_decision`。
-- 输出重点：任务图、Agent 分工、依赖与顺序、执行状态、最终汇总。
-- 行为边界：默认不写业务代码；不和专业 Agent 重复执行；不创建新 Agent；严格尊重用户指定 Agent；并行任务不得发生文件写冲突。
-- 固定交接：需求不清楚 → Emma；架构或数据库 → Bob；功能或 Bug → Alex；测试、数据验证或验收 → David。
-- 展示工具标签：项目上下文读取、Agent 分配和取消、工作流状态管理、结果汇总、请求关键决策。
-- 当前可执行工具：`delegate_to_emma`、`delegate_to_bob`、`delegate_to_alex`、`delegate_to_david`。每次成功调度都会更新项目 Agent Assignment、Run Agent State 和计划快照，并写入 `agent.delegated` Trace；Mike 不直接承担专业 Agent 的业务工作。
+| Agent（版本） | 角色与描述 | 核心目标 | 能力标识 | 输出重点 | 行为边界 |
+| ------------- | ---------- | -------- | -------- | -------- | -------- |
+| Mike（`mike@1`） | Team Lead；理解用户目标，拆分任务并协调团队交付 | 判断规模与领域；生成最小任务图；选择 Agent；管理依赖、顺序、重试和汇总；解释当前负责人及原因 | `project_context`、`agent_orchestration`、`workflow_state`、`result_synthesis`、`user_decision` | 任务图、Agent 分工、依赖顺序、执行状态、最终汇总 | 默认不写业务代码；不重复专业 Agent 工作；不创建新 Agent；尊重用户指定；并行任务不得冲突 |
+| Emma（`emma@1`） | Product & Research；把模糊想法整理成清晰、可实现、可验收的需求 | 理解用户与场景；梳理范围、流程和验收；按需研究；负责文案、内容策略和基础 SEO | `web_research`、`project_docs`、`product_requirements`、`preview_review`、`product_ux` | 用户目标、功能范围、流程、验收标准、待确认问题、交接摘要 | 不决定底层架构；默认不改业务代码；不把未验证结论当事实；不擅自扩大范围 |
+| Bob（`bob@1`） | System Architect；将产品需求转成安全、清晰、可实现的技术方案 | 设计边界、数据模型和接口；规划 Agent、事件、Trace、Sandbox；识别安全、性能和一致性风险 | `repository_analysis`、`database_design`、`api_events`、`auth_rls`、`technical_research`、`architecture_risk` | 技术决策、模块边界、数据结构、API/事件契约、安全要求、实现顺序 | 不过度设计；默认不承担大量业务实现；不绕过安全或审批；决策可追溯到需求 |
+| Alex（`alex@1`） | Full-stack Engineer；负责真正编写、运行、修复和交付应用 | 按需求和架构实现；操作文件、Terminal 和 Preview；修复 Bug；独立完成理解、实现、验证和汇报 | `file_operations`、`terminal`、`browser_preview`、`fullstack`、`supabase`、`testing_build`、`deployment_preparation` | 实现结果、文件变更、验证证据、风险、未完成项 | 默认唯一主要写入者；不输出密钥或伪造验证；危险操作、生产迁移和 Publish 需审批；Engineer Mode 不隐式调度 |
+| David（`david@1`） | Quality & Data Engineer；用测试和证据判断产品是否可用 | 按验收标准验证；检查数据库、权限、持久化和异常；执行测试与用户流程检查；分析 Trace/日志 | `playwright`、`automated_testing`、`typecheck_build`、`database_readonly`、`trace_logs`、`preview_acceptance` | 验证范围、通过项、失败项、复现步骤、证据、风险和发布建议 | 不把页面打开视为完成；不改生产数据；默认不重写业务实现；无法验证必须标记 |
 
-#### 13.1.3 Emma — Product & Research（`emma@1`）
+#### 13.1.3 Agent Tool、交接与当前实现
 
-- 描述：把模糊想法整理成清晰、可实现、可验收的产品需求。
-- 核心目标：理解用户、场景和目标；梳理范围、流程与验收标准；按需研究；负责界面文案、基础内容策略和基础 SEO。
-- 能力标识：`web_research`、`project_docs`、`product_requirements`、`preview_review`、`product_ux`。
-- 输出重点：用户目标、功能范围、用户流程、验收标准、待确认问题、给 Bob 或 Alex 的交接摘要。
-- 行为边界：不决定底层架构；默认不改业务代码；不把未验证研究结论当事实；不擅自扩大范围。
-- 展示工具标签：Web Research、项目文档读取、PRD 和用户故事、Preview 页面观察、产品与 UX 分析。
-- 当前可执行工具：`delegate_to_bob`、`delegate_to_alex`，分别用于把技术架构任务和功能实现任务继续交接。Research、文档读取和 Preview 观察 Tool 尚未接入。
-
-#### 13.1.4 Bob — System Architect（`bob@1`）
-
-- 描述：将产品需求转换成安全、清晰、可实现的技术方案。
-- 核心目标：设计前后端边界、数据模型和接口；规划 Agent、事件、Trace、Sandbox；识别安全、权限、性能和一致性风险；为 Alex 提供适度方案。
-- 能力标识：`repository_analysis`、`database_design`、`api_events`、`auth_rls`、`technical_research`、`architecture_risk`。
-- 输出重点：技术决策、模块边界、数据结构、API/事件契约、安全要求、实现顺序。
-- 行为边界：不过度设计；默认不承担大量业务实现；不绕过安全或审批；决策必须追溯到需求。
-- 展示工具标签：代码库与依赖分析、数据库 Schema 设计、API 与事件协议设计、Auth/RLS 检查、技术文档检索、架构风险分析。
-- 当前可执行工具：`delegate_to_alex`，用于把已明确的技术方案交给实现负责人。只读 Repository、Schema 和技术检索 Tool 尚未接入。
-
-#### 13.1.5 Alex — Full-stack Engineer（`alex@1`）
-
-- 描述：负责真正编写、运行、修复和交付应用。
-- 核心目标：按需求和架构实现；操作文件、终端和 Preview；修复 Bug 并保持项目可运行；在 Engineer Mode 独立完成理解、实现、验证和汇报。
-- 能力标识：`file_operations`、`terminal`、`browser_preview`、`fullstack`、`supabase`、`testing_build`、`deployment_preparation`。
-- 输出重点：实现结果、文件变更、验证证据、风险、未完成项。
-- 行为边界：默认是生产代码唯一主要写入者；不输出密钥；不伪造验证；危险操作、生产迁移和 Publish 需审批；遇到需求/架构矛盾时暂停；Engineer Mode 不隐式调用其他 Agent。
-- 展示工具标签：文件读写、Terminal、浏览器与 Web Preview、前后端开发、Supabase、测试与构建、部署准备。
-- 当前可执行工具：`workspace_list_files`、`workspace_read_file`、`coding`、`terminal_run`、`delegate_to_david`。`coding` 一次最多原子写入 40 个文本文件，先发送 `coding.started` 跟随信号，再生成每个文件的 `file.saved` Trace；相对路径自动投影为 Editor 文件夹树。`terminal_run` 将当前 `project_files` 单向同步到项目专属 Vercel Sandbox，以 executable + argv 形式运行最长 120 秒的非交互命令；不允许 Shell executable，外网仅开放常用包仓库与 GitHub 域名，命令参数不进入用户可见 Trace。stdout/stderr 经限频分块后写入 `terminal_chunks`，Terminal View 可实时补拉。Team Mode 中 Alex 可把验证任务交给 David；Engineer Mode 会移除该调度 Tool。
-- Web Preview 已接入静态 `index.html` 渲染，但不是模型 Tool，也不代表执行了构建。Terminal 对 Sandbox 的文件同步目前是单向的，命令产生的文件变更不会回写 Editor，持久代码变更仍必须调用 `coding`。尚未接入：Sandbox Snapshot/文件回写、Patch/Diff、动态应用 Preview、Validation、Supabase 管理、部署与 Publish Tool。因此 Alex 只能依据 `terminal_run` 的真实返回值声称命令已运行，不能把仅写入 Editor 的文件描述为已经构建或部署。
-
-#### 13.1.6 David — Quality & Data Engineer（`david@1`）
-
-- 描述：用测试和证据判断产品是否真正可用。
-- 核心目标：按验收标准验证；检查数据库、权限、持久化和异常；执行类型/自动化/用户流程检查；分析 Trace 与日志；向 Alex 提供可复现缺陷。
-- 能力标识：`playwright`、`automated_testing`、`typecheck_build`、`database_readonly`、`trace_logs`、`preview_acceptance`。
-- 输出重点：验证范围、通过项、失败项、复现步骤、证据、风险和发布建议。
-- 行为边界：不把页面打开当作完成；不改生产数据；默认不重写业务实现；只有明确分配时补测试代码；无法验证必须标记。
-- 展示工具标签：Playwright、单元与集成测试、类型检查和构建、数据库只读检查、Trace/日志分析、Preview 验收。
-- 当前可执行工具：`delegate_to_alex`，用于把发现的可复现业务缺陷交回主要写入者。Validation、数据库只读、Trace 和 Preview 验收 Tool 尚未接入。
+| Agent | 展示工具能力（`toolLabels`） | 当前可执行 Tool Allowlist | 固定交接 / 运行行为 | 当前实现状态 |
+| ----- | ---------------------------- | -------------------------- | ------------------ | ------------ |
+| Mike | 项目上下文读取；Agent 分配和取消；工作流状态管理；结果汇总；请求关键决策 | `delegate_to_emma`、`delegate_to_bob`、`delegate_to_alex`、`delegate_to_david` | 需求不清楚 → Emma；架构/数据库 → Bob；功能/Bug → Alex；测试/验收 → David；成功调度写 `agent.delegated` | 已接入调度 Tool、Assignment、Run Agent State 和计划快照；不直接承担专业业务工作 |
+| Emma | Web Research；项目文档读取；PRD/用户故事；Preview 观察；产品与 UX 分析 | `delegate_to_bob`、`delegate_to_alex` | 清晰需求 → Bob 或 Alex；仅允许交接用户授权范围 | Research、文档读取和 Preview 观察 Tool 尚未接入 |
+| Bob | 代码库与依赖分析；数据库 Schema；API 与事件契约；Auth/RLS；技术检索；架构风险分析 | `delegate_to_alex` | 已明确技术方案 → Alex；不直接写大量业务代码 | 只读 Repository、Schema 和技术检索 Tool 尚未接入 |
+| Alex | 文件读写；Terminal；浏览器与 Web Preview；前后端开发；Supabase；测试构建；部署准备 | `workspace_list_files`、`workspace_read_file`、`coding`、`terminal_run`、`preview_start`、`delegate_to_david` | `coding` 原子写入最多 40 个文本文件并发出 `coding.started`/`file.saved`；动态 Web 项目按 `coding → terminal_run(npm install) → terminal_run(npm run build，可用时) → preview_start`；Team Mode 可交 David，Engineer Mode 移除调度 Tool | `terminal_run` 在 Vercel Sandbox 运行受限 executable + argv，输出进入 Terminal/Trace；`preview_start` 暴露端口、健康检查并写 `preview.starting/ready/failed`；静态 `index.html` 仍作为无动态 Preview 时的 fallback；Sandbox Snapshot、文件回写、Patch/Diff、Validation、Supabase 管理、部署和 Publish Tool 尚未接入 |
+| David | Playwright；单元/集成测试；类型检查和构建；数据库只读；Trace/日志；Preview 验收 | `delegate_to_alex` | 发现可复现缺陷 → Alex；交接必须包含证据和复现步骤 | Validation、数据库只读、Trace 和 Preview 验收 Tool 尚未接入 |
 
 ### 13.2 Engineer Mode
 
@@ -1380,11 +1348,11 @@ users/{userId}/projects/{projectId}/
 
 ### 26.1 Agent 配置后续事项
 
-以下事项不再阻止 Engineer Mode 的 Workspace 文件闭环，但会阻止相应能力被标记为可用：
+以下事项不再阻止 Engineer Mode 的 Workspace 文件闭环，但会阻止相应尚未完成的能力被标记为可用：
 
 1. 五个 Agent 的头像资源。
-2. Mike、Emma、Bob、David 的可执行 Tool Allowlist、Schema、权限和限制。
-3. Alex 的 Sandbox、Terminal、Preview、Validation、Supabase 和部署 Tool。
+2. Mike、Emma、Bob、David 的 Research、文档、Schema、验证和 Preview 等专业 Tool Allowlist、Schema、权限和限制；当前已接入的 `delegate_to_*` 调度 Tool 除外。
+3. Alex 尚未接入的 Validation、Supabase 管理和部署 Tool；Sandbox、Terminal 与动态 Preview 已接入，仍需补齐 Snapshot/回写等生命周期能力。
 4. Team Mode 的动态任务分类/DAG、Mike 动态调度 Tool、专用汇总步骤和安全并行执行；当前已实现严格选人、顺序执行、handoff Trace 与有界交接上下文。
 5. Agent 级模型覆盖、OpenRouter 备用模型及能力路由策略。
 
