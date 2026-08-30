@@ -13,24 +13,24 @@
 
 本 TRD 将 PRD 中的 Dashboard、项目工作区、Engineer Mode、Team Mode、Editor、Terminal、Web Preview、Trace、跟随、版本与 Publish 转化为可实施的技术边界。
 
-本文只定义技术方案，不重新定义产品需求。Agent 的具体数量、角色、Prompt、默认模型和 Tool 组合尚未确定，因此本版只设计可扩展的 Agent 注册、分配与运行协议，不写死 Agent 清单。
+本文只定义技术方案，不重新定义产品需求。首版 Agent 的数量、角色、职责和默认调度已经确认；具体模型覆盖、可执行 Tool 实现和权限组合仍通过版本化注册表逐步接入。
 
 ## 2. 已确认约束与架构决策
 
 ### 2.1 已确认技术栈
 
-| 层级 | 技术方案 | 主要职责 |
-| --- | --- | --- |
-| Web 与 API | Next.js App Router + TypeScript + Vercel | 页面、Route Handlers、鉴权边界、API、服务端流处理 |
-| 数据库 | Supabase Postgres | 项目、对话、版本、运行记录、Trace、幂等与事务 |
-| 用户系统 | Supabase Auth + RLS | 登录、Cookie Session、用户数据隔离、项目权限 |
-| 实时通信 | OpenAI SDK Stream + Supabase Realtime | 服务端消费模型流；浏览器接收消息、Agent、工具和画布事件 |
-| AI 调度 | OpenAI JavaScript SDK + 自有调度层 | OpenRouter 接入、模型切换、工具调用、Engineer/Team Mode |
-| 持久任务 | Vercel Workflow | 长耗时 Agent 循环、重试、暂停、取消与部署后恢复 |
-| 代码运行 | Vercel Sandbox | 隔离文件系统、终端命令、开发服务器和 Web Preview |
-| 文件与产物 | Supabase Storage + Sandbox Snapshot | 用户资源、日志大对象、项目快照与版本恢复 |
-| 源码托管 | GitHub App | 保存源码、代码审查和触发部署；不作为 P0 运行时事实来源 |
-| 部署 | Vercel | Neurons 主应用与用户项目发布 |
+| 层级       | 技术方案                                 | 主要职责                                                |
+| ---------- | ---------------------------------------- | ------------------------------------------------------- |
+| Web 与 API | Next.js App Router + TypeScript + Vercel | 页面、Route Handlers、鉴权边界、API、服务端流处理       |
+| 数据库     | Supabase Postgres                        | 项目、对话、版本、运行记录、Trace、幂等与事务           |
+| 用户系统   | Supabase Auth + RLS                      | 登录、Cookie Session、用户数据隔离、项目权限            |
+| 实时通信   | OpenAI SDK Stream + Supabase Realtime    | 服务端消费模型流；浏览器接收消息、Agent、工具和画布事件 |
+| AI 调度    | OpenAI JavaScript SDK + 自有调度层       | OpenRouter 接入、模型切换、工具调用、Engineer/Team Mode |
+| 持久任务   | Vercel Workflow                          | 长耗时 Agent 循环、重试、暂停、取消与部署后恢复         |
+| 代码运行   | Vercel Sandbox                           | 隔离文件系统、终端命令、开发服务器和 Web Preview        |
+| 文件与产物 | Supabase Storage + Sandbox Snapshot      | 用户资源、日志大对象、项目快照与版本恢复                |
+| 源码托管   | GitHub App                               | 保存源码、代码审查和触发部署；不作为 P0 运行时事实来源  |
+| 部署       | Vercel                                   | Neurons 主应用与用户项目发布                            |
 
 ### 2.2 对截图方案的调整
 
@@ -81,7 +81,7 @@
 - 不把 Supabase Realtime 消息当作耐久事件存储。
 - 不存储或展示模型私有 Chain of Thought；只存储模型明确提供的 reasoning summary、系统生成的执行摘要和工具审计信息。
 - 不开发原生桌面应用或移动应用。首版只保证桌面浏览器工作区；不为移动端预留复杂响应式抽象。
-- 不在 Agent 角色未确认前创建虚构角色或默认 Tools。
+- 不把 Agent 的展示能力直接当作可执行 Tool 权限；Tool 必须由服务端注册表和策略层显式授予。
 
 ## 4. 总体架构
 
@@ -124,16 +124,16 @@ GitHub App ← Version/Source Service → Vercel Deploy API
 
 ### 4.1 事实来源
 
-| 数据 | 唯一事实来源 | 缓存或实时副本 |
-| --- | --- | --- |
-| 用户身份 | Supabase Auth | SSR Cookie Session |
-| 项目、消息、Run、Agent 分配 | Postgres | 浏览器 Query Cache |
-| Trace 顺序与状态 | Postgres `trace_events` | Realtime 事件、浏览器内存 |
-| 当前工作文件 | 活跃 Sandbox 文件系统 | Editor Buffer |
-| 耐久项目版本 | `project_versions` + Snapshot/Storage manifest | 活跃 Sandbox |
-| 最近成功预览 | `project_versions.latest_successful` 指针 | 当前 Preview iframe |
-| Agent 定义与 Tool 权限 | 服务端版本化注册表 | Postgres 只读展示投影 |
-| GitHub 源码 | GitHub，仅在启用同步后 | 项目版本记录中的 commit SHA |
+| 数据                        | 唯一事实来源                                   | 缓存或实时副本              |
+| --------------------------- | ---------------------------------------------- | --------------------------- |
+| 用户身份                    | Supabase Auth                                  | SSR Cookie Session          |
+| 项目、消息、Run、Agent 分配 | Postgres                                       | 浏览器 Query Cache          |
+| Trace 顺序与状态            | Postgres `trace_events`                        | Realtime 事件、浏览器内存   |
+| 当前工作文件                | 活跃 Sandbox 文件系统                          | Editor Buffer               |
+| 耐久项目版本                | `project_versions` + Snapshot/Storage manifest | 活跃 Sandbox                |
+| 最近成功预览                | `project_versions.latest_successful` 指针      | 当前 Preview iframe         |
+| Agent 定义与 Tool 权限      | 服务端版本化注册表                             | Postgres 只读展示投影       |
+| GitHub 源码                 | GitHub，仅在启用同步后                         | 项目版本记录中的 commit SHA |
 
 ### 4.2 核心原则
 
@@ -274,7 +274,10 @@ Sandbox 是唯一允许执行生成代码和开发命令的运行时。宿主 Ve
 ### 7.1 Supabase Auth
 
 - Next.js 使用 `@supabase/ssr` 管理 Cookie Session 和 Token 刷新。
-- 登录方式首版可从 Email Magic Link 或 Email/Password 中选择，具体产品入口待确认。
+- 首版使用 Email/Password 注册与登录；注册是否要求邮箱确认由 Supabase 项目配置决定。
+- 已有 Magic Link 账户通过密码重置邮件设置密码，继续使用同一个 `auth.users.id`，不得创建平行身份或迁移项目所有权。
+- Browser Client 将 Session 写入 Cookie；`proxy.ts` 在请求期间刷新过期 Access Token 并回写 Cookie。用户保持登录，直到 Refresh Session 失效、被撤销或主动退出。
+- 退出登录默认只清除当前浏览器 Session，不删除账户或业务数据。
 - Server Component 和 Route Handler 都必须从服务端验证用户，不信任客户端传入的 `userId`。
 - Auth 相关响应不得被共享缓存；刷新 Session 的响应使用私有、不可缓存策略。
 
@@ -327,27 +330,27 @@ RLS Policy 与 API 所有权检查必须分别测试，不能只测试其中一�
 
 #### `profiles`
 
-| 字段 | 说明 |
-| --- | --- |
-| `id` | 对应 `auth.users.id` |
-| `display_name` | 展示名 |
-| `avatar_path` | 私有或公开头像路径 |
+| 字段           | 说明                 |
+| -------------- | -------------------- |
+| `id`           | 对应 `auth.users.id` |
+| `display_name` | 展示名               |
+| `avatar_path`  | 私有或公开头像路径   |
 
 #### `projects`
 
-| 字段 | 说明 |
-| --- | --- |
-| `id`, `owner_id` | 项目与所有者 |
-| `name` | 项目名称 |
-| `status` | `ready/running/waiting/failed/stopped` |
-| `result_status` | `none/available/published`，与当前 Run 状态分离 |
-| `default_mode` | `engineer/team` |
-| `default_schedule_strategy` | `automatic/user_selected` |
-| `primary_conversation_id` | 主对话 |
-| `active_run_id` | 当前写入 Run，可空 |
-| `current_version_id` | 当前工作版本 |
-| `latest_successful_version_id` | 最近成功结果，失败时不更新 |
-| `archived_at`, `revision` | 归档和并发控制 |
+| 字段                           | 说明                                            |
+| ------------------------------ | ----------------------------------------------- |
+| `id`, `owner_id`               | 项目与所有者                                    |
+| `name`                         | 项目名称                                        |
+| `status`                       | `ready/running/waiting/failed/stopped`          |
+| `result_status`                | `none/available/published`，与当前 Run 状态分离 |
+| `default_mode`                 | `engineer/team`                                 |
+| `default_schedule_strategy`    | `automatic/user_selected`                       |
+| `primary_conversation_id`      | 主对话                                          |
+| `active_run_id`                | 当前写入 Run，可空                              |
+| `current_version_id`           | 当前工作版本                                    |
+| `latest_successful_version_id` | 最近成功结果，失败时不更新                      |
+| `archived_at`, `revision`      | 归档和并发控制                                  |
 
 约束：同一项目最多一个处于写执行状态的 Run。可通过部分唯一索引或事务级 Advisory Lock 保证。
 
@@ -361,17 +364,17 @@ P0 一个项目只有一个连续主对话；未来如 PRD 确认多会话，可
 
 #### `messages`
 
-| 字段 | 说明 |
-| --- | --- |
-| `id`, `project_id`, `conversation_id` | 归属 |
-| `run_id`, `agent_key` | 可空，关联执行 |
-| `sequence` | 对话内稳定顺序 |
-| `role` | `user/assistant/system_event` |
-| `kind` | `text/thought_summary/tool_summary/status/error/approval` |
-| `status` | `pending/streaming/completed/failed/cancelled` |
-| `content` | 已脱敏结构化内容 |
-| `client_request_id` | 用户提交幂等键 |
-| `completed_at` | 完成时间 |
+| 字段                                  | 说明                                                      |
+| ------------------------------------- | --------------------------------------------------------- |
+| `id`, `project_id`, `conversation_id` | 归属                                                      |
+| `run_id`, `agent_key`                 | 可空，关联执行                                            |
+| `sequence`                            | 对话内稳定顺序                                            |
+| `role`                                | `user/assistant/system_event`                             |
+| `kind`                                | `text/thought_summary/tool_summary/status/error/approval` |
+| `status`                              | `pending/streaming/completed/failed/cancelled`            |
+| `content`                             | 已脱敏结构化内容                                          |
+| `client_request_id`                   | 用户提交幂等键                                            |
+| `completed_at`                        | 完成时间                                                  |
 
 唯一约束：`(owner_id, client_request_id)`；流式 Assistant Message 只更新同一行，不为每个 token 新建行。
 
@@ -397,19 +400,19 @@ P0 一个项目只有一个连续主对话；未来如 PRD 确认多会话，可
 
 #### `agent_runs`
 
-| 字段 | 说明 |
-| --- | --- |
-| `id`, `project_id`, `conversation_id` | Run 归属 |
-| `trigger_message_id` | 触发用户消息 |
-| `mode` | `engineer/team` |
-| `schedule_strategy` | `automatic/user_selected` |
-| `status` | Run 状态机 |
-| `workflow_run_id` | Vercel Workflow ID |
-| `model_config_snapshot` | 模型标识和非密钥参数快照 |
-| `agent_plan_snapshot` | 本次分配和依赖图 |
-| `last_event_sequence` | 断线恢复游标 |
-| `cancel_requested_at` | 取消请求 |
-| `started_at`, `completed_at`, `failure_code` | 生命周期 |
+| 字段                                         | 说明                      |
+| -------------------------------------------- | ------------------------- |
+| `id`, `project_id`, `conversation_id`        | Run 归属                  |
+| `trigger_message_id`                         | 触发用户消息              |
+| `mode`                                       | `engineer/team`           |
+| `schedule_strategy`                          | `automatic/user_selected` |
+| `status`                                     | Run 状态机                |
+| `workflow_run_id`                            | Vercel Workflow ID        |
+| `model_config_snapshot`                      | 模型标识和非密钥参数快照  |
+| `agent_plan_snapshot`                        | 本次分配和依赖图          |
+| `last_event_sequence`                        | 断线恢复游标              |
+| `cancel_requested_at`                        | 取消请求                  |
+| `started_at`, `completed_at`, `failure_code` | 生命周期                  |
 
 #### `run_agent_states`
 
@@ -420,18 +423,18 @@ P0 一个项目只有一个连续主对话；未来如 PRD 确认多会话，可
 
 #### `trace_events`
 
-| 字段 | 说明 |
-| --- | --- |
-| `id`, `project_id`, `run_id`, `agent_key` | 归属 |
-| `sequence` | Run 内严格递增游标 |
-| `event_type` | 标准事件类型 |
-| `status` | `started/progress/completed/failed/cancelled` |
-| `visibility` | `user/internal` |
-| `summary` | 对话压缩节点使用的已脱敏摘要 |
-| `detail` | 用户可查看的结构化详情 |
-| `parent_event_id`, `correlation_id` | 关联链路 |
-| `file_path`, `terminal_session_id`, `tool_invocation_id` | 画布定位 |
-| `redaction_version` | 脱敏规则版本 |
+| 字段                                                     | 说明                                          |
+| -------------------------------------------------------- | --------------------------------------------- |
+| `id`, `project_id`, `run_id`, `agent_key`                | 归属                                          |
+| `sequence`                                               | Run 内严格递增游标                            |
+| `event_type`                                             | 标准事件类型                                  |
+| `status`                                                 | `started/progress/completed/failed/cancelled` |
+| `visibility`                                             | `user/internal`                               |
+| `summary`                                                | 对话压缩节点使用的已脱敏摘要                  |
+| `detail`                                                 | 用户可查看的结构化详情                        |
+| `parent_event_id`, `correlation_id`                      | 关联链路                                      |
+| `file_path`, `terminal_session_id`, `tool_invocation_id` | 画布定位                                      |
+| `redaction_version`                                      | 脱敏规则版本                                  |
 
 内部错误栈、Provider 原始包和安全审计详情不得放入用户可查询的 `detail`，应进入受限日志系统或 `internal` schema，并设置短保留期。
 
@@ -582,27 +585,27 @@ none → starting → ready
 
 ### 10.2 P0 Endpoints
 
-| Method | Path | 职责 |
-| --- | --- | --- |
-| `POST` | `/api/v1/projects` | 原子创建项目、主对话、首条消息和首次 Run |
-| `GET` | `/api/v1/projects` | Dashboard 项目列表，Cursor 分页 |
-| `GET` | `/api/v1/projects/:id` | 工作区初始数据与当前状态 |
-| `PATCH` | `/api/v1/projects/:id` | 名称、默认模式等允许字段 |
-| `GET` | `/api/v1/projects/:id/history` | 消息、Run 和关键事件历史 |
-| `POST` | `/api/v1/projects/:id/messages` | 写消息并创建下一次 Run |
-| `GET` | `/api/v1/projects/:id/messages` | 对话 Cursor 分页与断线补齐 |
-| `GET` | `/api/v1/projects/:id/agents` | 全部 Agent 展示投影和项目分配状态 |
-| `GET` | `/api/v1/runs/:id` | Run 当前状态 |
-| `POST` | `/api/v1/runs/:id/cancel` | 请求取消，不伪造立即取消成功 |
-| `POST` | `/api/v1/runs/:id/retry` | 从失败 Run 创建新 Run |
-| `GET` | `/api/v1/runs/:id/events?after=` | 按 Sequence 补拉 Trace/状态事件 |
-| `GET` | `/api/v1/runs/:id/trace/:eventId` | 获取已脱敏完整详情 |
-| `GET` | `/api/v1/projects/:id/files` | 文件树或文件内容 |
-| `PUT` | `/api/v1/projects/:id/files` | 用户保存文件，带版本 revision |
-| `GET` | `/api/v1/projects/:id/terminal` | Terminal Session 和输出补拉 |
-| `GET` | `/api/v1/projects/:id/preview` | 当前与最近成功 Preview 信息 |
-| `GET` | `/api/v1/projects/:id/versions` | 版本列表 |
-| `POST` | `/api/v1/projects/:id/publish` | 发布指定成功版本 |
+| Method  | Path                              | 职责                                     |
+| ------- | --------------------------------- | ---------------------------------------- |
+| `POST`  | `/api/v1/projects`                | 原子创建项目、主对话、首条消息和首次 Run |
+| `GET`   | `/api/v1/projects`                | Dashboard 项目列表，Cursor 分页          |
+| `GET`   | `/api/v1/projects/:id`            | 工作区初始数据与当前状态                 |
+| `PATCH` | `/api/v1/projects/:id`            | 名称、默认模式等允许字段                 |
+| `GET`   | `/api/v1/projects/:id/history`    | 消息、Run 和关键事件历史                 |
+| `POST`  | `/api/v1/projects/:id/messages`   | 写消息并创建下一次 Run                   |
+| `GET`   | `/api/v1/projects/:id/messages`   | 对话 Cursor 分页与断线补齐               |
+| `GET`   | `/api/v1/projects/:id/agents`     | 全部 Agent 展示投影和项目分配状态        |
+| `GET`   | `/api/v1/runs/:id`                | Run 当前状态                             |
+| `POST`  | `/api/v1/runs/:id/cancel`         | 请求取消，不伪造立即取消成功             |
+| `POST`  | `/api/v1/runs/:id/retry`          | 从失败 Run 创建新 Run                    |
+| `GET`   | `/api/v1/runs/:id/events?after=`  | 按 Sequence 补拉 Trace/状态事件          |
+| `GET`   | `/api/v1/runs/:id/trace/:eventId` | 获取已脱敏完整详情                       |
+| `GET`   | `/api/v1/projects/:id/files`      | 文件树或文件内容                         |
+| `PUT`   | `/api/v1/projects/:id/files`      | 用户保存文件，带版本 revision            |
+| `GET`   | `/api/v1/projects/:id/terminal`   | Terminal Session 和输出补拉              |
+| `GET`   | `/api/v1/projects/:id/preview`    | 当前与最近成功 Preview 信息              |
+| `GET`   | `/api/v1/projects/:id/versions`   | 版本列表                                 |
+| `POST`  | `/api/v1/projects/:id/publish`    | 发布指定成功版本                         |
 
 ### 10.3 原子创建项目
 
@@ -689,9 +692,9 @@ new OpenAI({
   baseURL: env.OPENROUTER_BASE_URL,
   defaultHeaders: {
     "HTTP-Referer": env.APP_URL,
-    "X-OpenRouter-Title": "Neurons"
-  }
-})
+    "X-OpenRouter-Title": "Neurons",
+  },
+});
 ```
 
 - Client 仅存在于 Server/Workflow 模块。
@@ -755,14 +758,16 @@ type AgentDefinition = {
 };
 ```
 
-- 当前不定义数组长度或具体 Agent。
+- 权威定义位于服务端 `lib/agents/registry.ts`，固定包含 Mike、Emma、Bob、Alex 和 David；浏览器只能读取安全展示投影。
 - Prompt 正文和 Tool 权限不从浏览器或可写数据库字段加载。
-- 部署时将安全展示字段同步到 `agent_definitions_projection`。
+- 迁移 `202608300001_agent_definitions.sql` 将名称、描述和能力标签同步到 `agent_definitions_projection`；这些标签不授予执行权限。
 - 已运行任务始终引用具体 `key + version`，定义升级不改变历史。
+
+首版稳定 Agent Key 为：`mike`、`emma`、`bob`、`alex`、`david`。Engineer Mode 固定解析 `alex`；Team Mode 固定由 `mike` 负责调度。默认调度阶段定义在 `defaultScheduleRules`，用户指定模式只允许使用请求中的 Agent Key。
 
 ### 13.2 Engineer Mode
 
-- Scheduler 解析一个启用的 Engineer Agent。
+- Scheduler 固定解析 Alex，不在后台隐式调用其他 Agent。
 - 一个 Run 只有一个主 Agent State。
 - Agent Loop：构建上下文 → 请求模型流 → 解析 Tool Call → Policy → 执行 Tool → 写回 Tool Result → 继续，直到完成或达到限制。
 - 单 Agent 不代表单次模型调用；允许多轮工具循环，但有明确上限。
@@ -1049,26 +1054,26 @@ users/{userId}/projects/{projectId}/
 
 以下限制在实现时必须集中配置并由服务端强制执行。后续可以根据压测和套餐下调或上调，但不得删除边界：
 
-| 资源 | P0 默认上限 |
-| --- | --- |
-| 普通 JSON Request Body | 1 MiB |
-| 单条用户消息 | 32 KiB UTF-8 |
-| 单个文本文件 Editor 读取/保存 | 2 MiB |
-| 单文件上传 | 20 MiB |
-| 单项目 Sandbox Workspace | 512 MiB、20,000 个文件 |
-| 规范化相对路径 | 240 字符、最大 32 层 |
-| 单 Tool 输入 | 256 KiB；超过则拒绝或改用 Artifact 引用 |
-| 单 Tool 用户可见输出 | 64 KiB；完整大对象进入 private Storage |
-| 单 Realtime Event | 32 KiB |
-| 单 Terminal Chunk | 16 KiB |
-| 单 Run Terminal 原始输出 | 20 MiB，之后停止命令并报告超限 |
-| 普通命令默认/最大执行时间 | 2 分钟 / 10 分钟 |
-| Sandbox 无活动休眠时间 | 5 分钟 |
-| 单 Run 活跃执行时间 | 60 分钟；等待用户时间不计入但有独立过期策略 |
-| 单 Run 模型调用次数 | 40 |
-| 单 Run Tool Call 次数 | 100 |
-| 单 Tool/Provider 瞬时失败重试 | 最多 3 次 |
-| 单 Run 模型输出总量 | 64,000 tokens，且不得超过具体模型限制 |
+| 资源                          | P0 默认上限                                 |
+| ----------------------------- | ------------------------------------------- |
+| 普通 JSON Request Body        | 1 MiB                                       |
+| 单条用户消息                  | 32 KiB UTF-8                                |
+| 单个文本文件 Editor 读取/保存 | 2 MiB                                       |
+| 单文件上传                    | 20 MiB                                      |
+| 单项目 Sandbox Workspace      | 512 MiB、20,000 个文件                      |
+| 规范化相对路径                | 240 字符、最大 32 层                        |
+| 单 Tool 输入                  | 256 KiB；超过则拒绝或改用 Artifact 引用     |
+| 单 Tool 用户可见输出          | 64 KiB；完整大对象进入 private Storage      |
+| 单 Realtime Event             | 32 KiB                                      |
+| 单 Terminal Chunk             | 16 KiB                                      |
+| 单 Run Terminal 原始输出      | 20 MiB，之后停止命令并报告超限              |
+| 普通命令默认/最大执行时间     | 2 分钟 / 10 分钟                            |
+| Sandbox 无活动休眠时间        | 5 分钟                                      |
+| 单 Run 活跃执行时间           | 60 分钟；等待用户时间不计入但有独立过期策略 |
+| 单 Run 模型调用次数           | 40                                          |
+| 单 Run Tool Call 次数         | 100                                         |
+| 单 Tool/Provider 瞬时失败重试 | 最多 3 次                                   |
+| 单 Run 模型输出总量           | 64,000 tokens，且不得超过具体模型限制       |
 
 - Agent Definition 可以设置更低的限制，不能超过平台硬限制。
 - 依赖安装、Build 和 Dev Server 可以申请更长命令时间，但必须由已登记 Tool Policy 明确授予，不能由模型输入覆盖。
@@ -1116,17 +1121,17 @@ users/{userId}/projects/{projectId}/
 
 ### 22.1 P0 Required
 
-| 变量 | 暴露范围 | 说明 |
-| --- | --- | --- |
-| `DATABASE_URL` | Server only / Secret | Supabase Postgres 连接串，使用适合 Serverless 的 Pooler |
-| `OPENROUTER_API_KEY` | Server only / Secret | OpenRouter API Key |
-| `OPENROUTER_BASE_URL` | Server only / Non-secret | 默认 `https://openrouter.ai/api/v1` |
-| `OPENROUTER_DEFAULT_MODEL` | Server only / Non-secret | 待模型设计后填写 |
-| `NEXT_PUBLIC_SUPABASE_URL` | Browser allowed | Supabase Project URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser allowed | Supabase Publishable Key，不是 Secret Key |
-| `SUPABASE_SECRET_KEY` | Server only / Secret | 后台 Realtime/Storage/管理操作；仅在确有需要时使用 |
-| `APP_URL` | Server + Browser safe | Neurons 主站 URL |
-| `VERCEL_OIDC_TOKEN` | Server only / Secret | Vercel 部署自动提供；本地开发通过 Vercel Link/Pull 获取 |
+| 变量                                   | 暴露范围                 | 说明                                                    |
+| -------------------------------------- | ------------------------ | ------------------------------------------------------- |
+| `DATABASE_URL`                         | Server only / Secret     | Supabase Postgres 连接串，使用适合 Serverless 的 Pooler |
+| `OPENROUTER_API_KEY`                   | Server only / Secret     | OpenRouter API Key                                      |
+| `OPENROUTER_BASE_URL`                  | Server only / Non-secret | 默认 `https://openrouter.ai/api/v1`                     |
+| `OPENROUTER_DEFAULT_MODEL`             | Server only / Non-secret | 待模型设计后填写                                        |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Browser allowed          | Supabase Project URL                                    |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser allowed          | Supabase Publishable Key，不是 Secret Key               |
+| `SUPABASE_SECRET_KEY`                  | Server only / Secret     | 后台 Realtime/Storage/管理操作；仅在确有需要时使用      |
+| `APP_URL`                              | Server + Browser safe    | Neurons 主站 URL                                        |
+| `VERCEL_OIDC_TOKEN`                    | Server only / Secret     | Vercel 部署自动提供；本地开发通过 Vercel Link/Pull 获取 |
 
 ### 22.2 P1/P2
 
