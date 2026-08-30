@@ -90,3 +90,10 @@
 - 涉及代码文件：`app/globals.css`；Workspace 顶部导航的图标尺寸调整位于 `components/workspace/project-workspace.tsx`。
 - 关键数据结构或方法：无；统一 UI token、控件高度、圆角、muted 文本对比度、滚动条占位及面板间距，弱化渐变、阴影、紫色装饰和卡片浮动效果。
 - 上下游影响与依赖：仅影响 Dashboard、Auth、Workspace、Chat 与 Trace 的视觉呈现和键盘/滚动体验，不改变业务逻辑、API、数据结构或运行时依赖；继续复用现有浅色 semantic token，并保留弹窗/下拉层级所需的阴影。
+
+### polish(workspace): consolidate toolbar and trace scrolling
+
+- Commit：待提交
+- 涉及代码文件：`components/workspace/project-workspace.tsx`、`app/globals.css`。
+- 关键数据结构或方法：将 Canvas View Tabs、项目/版本、Publish、Follow 与 Agent 头像合并到单行 Toolbar；Tab 字号在组件实例上局部覆盖为 `16.5px`；Trace surface 增加高度约束，Trace 左栏使用独立纵向滚动。
+- 上下游影响与依赖：仅改变 Workspace 顶部布局、字号和 Trace 列表滚动容器，不改变 View 切换、Agent、Publish、Follow、Trace 查询或其他业务逻辑；继续复用现有响应式断点与 semantic CSS token。

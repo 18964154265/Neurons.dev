@@ -903,29 +903,17 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </form>
       </section>
 
-      <section className="canvas-pane">
-        <header className="canvas-globalbar">
-          <div className="project-actions">
-            <button className="top-action">
-              <GitBranch size={16} /> 项目
-            </button>
-            <button className="top-action">
-              <Radio size={16} /> 版本
-            </button>
-            <button
-              className="publish-button"
-              disabled={!project.latestSuccessfulVersionId}
-            >
-              <Rocket size={16} /> Publish
-            </button>
-          </div>
-        </header>
+      <section
+        className="canvas-pane"
+        style={{ gridTemplateRows: "52px minmax(0, 1fr)" }}
+      >
         <div className="canvas-toolbar">
           <nav className="view-tabs" aria-label="画布视图">
             {views.map((item) => (
               <button
                 key={item.key}
                 className={view === item.key ? "active" : ""}
+                style={{ fontSize: "16.5px" }}
                 onClick={() => {
                   setView(item.key);
                   setFollow(false);
@@ -936,6 +924,20 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             ))}
           </nav>
           <div className="canvas-controls">
+            <div className="project-actions">
+              <button className="top-action">
+                <GitBranch size={16} /> 项目
+              </button>
+              <button className="top-action">
+                <Radio size={16} /> 版本
+              </button>
+              <button
+                className="publish-button"
+                disabled={!project.latestSuccessfulVersionId}
+              >
+                <Rocket size={16} /> Publish
+              </button>
+            </div>
             <button
               className={`follow-button ${follow ? "active" : ""}`}
               onClick={() => setFollow((value) => !value)}
