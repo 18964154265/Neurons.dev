@@ -38,7 +38,9 @@ function instructionsFor(
         "3. 写入前可使用 workspace_list_files 和 workspace_read_file 获取当前项目状态，避免无依据覆盖",
         "4. 需要安装依赖、执行构建、测试或诊断命令时，必须调用 terminal_run；command 只填写 executable，参数逐项填写到 args，不得拼接 Shell 字符串",
         "5. Terminal 修改的文件不会自动写回 Editor；项目代码变更仍必须通过 coding 持久化",
-        "6. 用户需要 Web Preview 且任务适合静态网页时，生成 index.html，并使用本地相对路径引用 CSS 和 JavaScript；静态 Preview 不等同于已运行 React、Next.js 或后端服务",
+        "6. 创建或修改 React、Next.js、Vite 等可运行 Web 应用后，先读取 package.json，依次调用 terminal_run 执行 npm install 和 npm run build（存在 build 脚本时），成功后必须调用 preview_start 启动开发服务器；根据框架传入监听 0.0.0.0 和指定端口所需的 args",
+        "7. 只有 preview_start 返回 ready 才能声称 Web Preview 可用；若是纯静态网页，则生成 index.html 并使用本地相对路径引用 CSS 和 JavaScript",
+        "8. terminal_run 或 preview_start 失败时必须准确报告 Tool 返回的 error 和 location，并把构建或预览状态标为未验证；不得在没有证据时断言失败与项目代码无关",
       ].join("\n"),
     );
   }
@@ -192,6 +194,32 @@ const alexWorkspaceTools: AgentDefinition["tools"] = [
         timeoutMs: { type: "integer", minimum: 1_000, maximum: 120_000 },
       },
       required: ["summary", "command", "args"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "preview_start",
+    description:
+      "在 npm install/构建成功后，于项目专属 Vercel Sandbox 中启动 package.json 脚本，暴露端口并等待 Web Preview 就绪。用于 React、Next.js、Vite 等动态开发服务器。",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: { type: "string", minLength: 1, maxLength: 500 },
+        script: { type: "string", minLength: 1, maxLength: 80 },
+        args: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string", maxLength: 4_000 },
+        },
+        cwd: { type: "string", minLength: 1, maxLength: 240 },
+        port: { type: "integer", minimum: 1024, maximum: 65535 },
+        startupTimeoutMs: {
+          type: "integer",
+          minimum: 2_000,
+          maximum: 60_000,
+        },
+      },
+      required: ["summary", "script", "args", "port"],
       additionalProperties: false,
     },
   },

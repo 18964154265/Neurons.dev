@@ -14,7 +14,9 @@ import {
 } from "@/lib/files/project-file";
 import type { LLMToolCall } from "@/lib/llm/types";
 import type { PreparedAgentTurn } from "@/lib/runs/worker-store";
+import { previewStartInputSchema } from "@/lib/preview/types";
 import { terminalRunInputSchema } from "@/lib/terminal/types";
+import { executePreviewStart } from "@/lib/tools/preview";
 import { executeTerminalCommand } from "@/lib/tools/terminal";
 
 export type WorkspaceToolResult = {
@@ -170,6 +172,13 @@ async function executeWorkspaceOperation(
     };
   }
 
+  if (call.name === "preview_start") {
+    return {
+      output: await executePreviewStart(run, input),
+      filePaths: [],
+    };
+  }
+
   throw new Error(`TOOL_NOT_IMPLEMENTED:${call.name}`);
 }
 
@@ -221,7 +230,23 @@ export async function executeWorkspaceToolCall(
             return { invalid: true };
           }
         })()
-      : { arguments: call.arguments.slice(0, 2000) };
+      : call.name === "preview_start"
+        ? (() => {
+            try {
+              const input = previewStartInputSchema.parse(parseArguments(call));
+              return {
+                summary: input.summary,
+                script: input.script,
+                argCount: input.args.length,
+                cwd: input.cwd,
+                port: input.port,
+                startupTimeoutMs: input.startupTimeoutMs,
+              };
+            } catch {
+              return { invalid: true };
+            }
+          })()
+        : { arguments: call.arguments.slice(0, 2000) };
 
   await sql.begin(async (transaction) => {
     const invocationRows = await transaction<Array<{ id: string }>>`

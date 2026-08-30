@@ -267,6 +267,8 @@ test_cases/
 
 Sandbox 是唯一允许执行生成代码和开发命令的运行时。宿主 Vercel Function 不得调用本地 Shell、`eval`、`new Function` 或子进程执行生成内容。
 
+Sandbox SDK 负责解析 Vercel Function/Workflow 运行时请求上下文中的 OIDC token，应用不得仅以 `process.env.VERCEL_OIDC_TOKEN` 是否存在作为可用性判断。只有显式提供 `VERCEL_TOKEN` 时才切换到 Access Token 模式，并要求 `VERCEL_TEAM_ID`、`VERCEL_PROJECT_ID` 同时存在。
+
 每个活跃项目最多绑定一个可写 Sandbox；同一项目的写操作串行化。Team Mode 可以并行推理，但对同一工作树的变更必须经项目写入锁合并。
 
 ## 7. 身份、会话与授权
@@ -280,6 +282,7 @@ Sandbox 是唯一允许执行生成代码和开发命令的运行时。宿主 Ve
 - 退出登录默认只清除当前浏览器 Session，不删除账户或业务数据。
 - Server Component 和 Route Handler 都必须从服务端验证用户，不信任客户端传入的 `userId`。
 - Auth 相关响应不得被共享缓存；刷新 Session 的响应使用私有、不可缓存策略。
+- 注册确认和密码重置的回调 URL 从浏览器当前 Origin 构造，服务端应用 Origin 依次解析 `APP_URL`、`VERCEL_PROJECT_PRODUCTION_URL`、`VERCEL_URL`；生产环境不允许静默回退到 localhost。Supabase Auth 的生产 Site URL 和 `/auth/callback` Redirect URL 必须与正式域名一致，Preview 域名通过额外允许规则管理。
 
 ### 7.2 权限模型
 
@@ -985,6 +988,9 @@ Snapshot 有 Provider 生命周期限制，因此不能单独作为永久版本�
 ### 15.4 Web Preview
 
 - Preview Dev Server 只在 Sandbox 内运行。
+- Alex 对动态 Web 项目执行 `coding → terminal_run(npm install) → terminal_run(npm run build，可用时) → preview_start`；有限命令与常驻服务使用不同工具，避免 Terminal 永久等待。
+- `preview_start` 只执行 `package.json` 中的 npm script，参数使用 argv 数组传递；它同步数据库中的项目文件、暴露显式端口、轮询健康状态，并写入 `preview.starting/ready/failed` Trace。
+- `GET /api/v1/projects/:id/preview` 仅向项目所有者返回当前 Preview 投影；公开 URL 由服务端根据 `provider_sandbox_id + preview_port` 动态解析，不写入聊天或 Tool Trace。
 - 系统检测启动端口和健康状态，返回受控访问 URL。
 - iframe 使用严格 `sandbox` 属性、独立 Origin 和 CSP，避免用户项目访问 Neurons 主站 Cookie 或 DOM。
 - Preview URL 短期有效，不写入聊天正文或公开日志。
@@ -1218,17 +1224,17 @@ users/{userId}/projects/{projectId}/
 
 ### 22.1 P0 Required
 
-| 变量                                   | 暴露范围                 | 说明                                                    |
-| -------------------------------------- | ------------------------ | ------------------------------------------------------- |
-| `DATABASE_URL`                         | Server only / Secret     | Supabase Postgres 连接串，使用适合 Serverless 的 Pooler |
-| `OPENROUTER_API_KEY`                   | Server only / Secret     | OpenRouter API Key                                      |
-| `OPENROUTER_BASE_URL`                  | Server only / Non-secret | 默认 `https://openrouter.ai/api/v1`                     |
-| `OPENROUTER_DEFAULT_MODEL`             | Server only / Non-secret | 待模型设计后填写                                        |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Browser allowed          | Supabase Project URL                                    |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser allowed          | Supabase Publishable Key，不是 Secret Key               |
-| `SUPABASE_SECRET_KEY`                  | Server only / Secret     | 后台 Realtime/Storage/管理操作；仅在确有需要时使用      |
-| `APP_URL`                              | Server + Browser safe    | Neurons 主站 URL                                        |
-| `VERCEL_OIDC_TOKEN`                    | Server only / Secret     | Vercel 部署自动提供；本地开发通过 Vercel Link/Pull 获取 |
+| 变量                                   | 暴露范围                 | 说明                                                                           |
+| -------------------------------------- | ------------------------ | ------------------------------------------------------------------------------ |
+| `DATABASE_URL`                         | Server only / Secret     | Supabase Postgres 连接串，使用适合 Serverless 的 Pooler                        |
+| `OPENROUTER_API_KEY`                   | Server only / Secret     | OpenRouter API Key                                                             |
+| `OPENROUTER_BASE_URL`                  | Server only / Non-secret | 默认 `https://openrouter.ai/api/v1`                                            |
+| `OPENROUTER_DEFAULT_MODEL`             | Server only / Non-secret | 待模型设计后填写                                                               |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Browser allowed          | Supabase Project URL                                                           |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser allowed          | Supabase Publishable Key，不是 Secret Key                                      |
+| `SUPABASE_SECRET_KEY`                  | Server only / Secret     | 后台 Realtime/Storage/管理操作；仅在确有需要时使用                             |
+| `APP_URL`                              | Server / Non-secret      | 规范主站 Origin；非 Vercel 环境必填，不能包含路径                              |
+| `VERCEL_OIDC_TOKEN`                    | Server only / Secret     | SDK 从 Vercel Function/Workflow 请求上下文解析；本地通过 Vercel Link/Pull 获取 |
 
 ### 22.2 P1/P2
 

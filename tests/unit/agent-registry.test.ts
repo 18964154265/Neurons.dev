@@ -32,7 +32,13 @@ describe("agent registry", () => {
       resolveAgentDefinitionForMode("alex", "engineer").tools.map(
         (tool) => tool.name,
       ),
-    ).toEqual(["workspace_list_files", "workspace_read_file", "coding"]);
+    ).toEqual([
+      "workspace_list_files",
+      "workspace_read_file",
+      "coding",
+      "terminal_run",
+      "preview_start",
+    ]);
     expect(
       resolveAgentDefinitionForMode("alex", "engineer").instructions,
     ).not.toContain("delegate_to_david");
@@ -55,10 +61,15 @@ describe("agent registry", () => {
       "workspace_list_files",
       "workspace_read_file",
       "coding",
+      "terminal_run",
+      "preview_start",
       "delegate_to_david",
     ]);
     expect(resolveEngineerDefinition().instructions).toContain(
       "必须显式调用 coding 工具",
+    );
+    expect(resolveEngineerDefinition().instructions).toContain(
+      "必须调用 preview_start 启动开发服务器",
     );
     expect(delegationTargetsByAgent).toEqual({
       mike: ["emma", "bob", "alex", "david"],

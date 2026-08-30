@@ -6,6 +6,7 @@ import { Sandbox } from "@vercel/sandbox";
 
 import { getDatabase } from "@/lib/db/postgres";
 import type { PreparedAgentTurn } from "@/lib/runs/worker-store";
+import { resolveSandboxAccessCredentials } from "@/lib/tools/sandbox-credentials";
 import {
   terminalRunInputSchema,
   type TerminalRunInput,
@@ -16,7 +17,7 @@ const MAX_CHUNK_BYTES = 16_000;
 const OUTPUT_FLUSH_BYTES = 8_000;
 const OUTPUT_FLUSH_INTERVAL_MS = 200;
 const OUTPUT_TAIL_CHARACTERS = 24_000;
-const sandboxNetworkPolicy = {
+export const sandboxNetworkPolicy = {
   allow: [
     "registry.npmjs.org",
     "*.npmjs.org",
@@ -43,15 +44,6 @@ const blockedExecutables = new Set([
   "umount",
   "zsh",
 ]);
-
-function sandboxCredentials() {
-  if (process.env.VERCEL_OIDC_TOKEN) return {};
-  const teamId = process.env.VERCEL_TEAM_ID;
-  const projectId = process.env.VERCEL_PROJECT_ID;
-  const token = process.env.VERCEL_TOKEN;
-  if (teamId && projectId && token) return { teamId, projectId, token };
-  throw new Error("VERCEL_SANDBOX_CREDENTIALS_MISSING");
-}
 
 function validateCommand(input: TerminalRunInput) {
   if (blockedExecutables.has(input.command.toLowerCase())) {
@@ -85,7 +77,7 @@ function splitOutput(value: string) {
   return chunks;
 }
 
-async function appendTerminalTrace(
+export async function appendTerminalTrace(
   run: PreparedAgentTurn,
   terminalSessionId: string,
   eventType: string,
@@ -117,7 +109,7 @@ async function appendTerminalTrace(
   });
 }
 
-async function syncProjectFiles(sandbox: Sandbox, projectId: string) {
+export async function syncProjectFiles(sandbox: Sandbox, projectId: string) {
   const sql = getDatabase();
   const files = await sql<Array<{ path: string; content: string }>>`
     select path, content
@@ -146,6 +138,23 @@ async function syncProjectFiles(sandbox: Sandbox, projectId: string) {
   }
 }
 
+export async function getProjectSandbox(projectId: string, ports?: number[]) {
+  const sandbox = await Sandbox.getOrCreate({
+    name: `neurons-${projectId}`,
+    timeout: 5 * 60_000,
+    persistent: true,
+    resources: { vcpus: 2 },
+    networkPolicy: sandboxNetworkPolicy,
+    ports,
+    ...resolveSandboxAccessCredentials(process.env),
+  });
+  await sandbox.update({
+    networkPolicy: sandboxNetworkPolicy,
+    ...(ports ? { ports } : {}),
+  });
+  return sandbox;
+}
+
 export async function executeTerminalCommand(
   run: PreparedAgentTurn,
   value: unknown,
@@ -153,17 +162,7 @@ export async function executeTerminalCommand(
   const input = terminalRunInputSchema.parse(value);
   validateCommand(input);
   const sql = getDatabase();
-  const sandboxName = `neurons-${run.projectId}`;
-  const sandbox = await Sandbox.getOrCreate({
-    name: sandboxName,
-    timeout: 5 * 60_000,
-    persistent: true,
-    resources: { vcpus: 2 },
-    networkPolicy: sandboxNetworkPolicy,
-    ...sandboxCredentials(),
-  });
-
-  await sandbox.update({ networkPolicy: sandboxNetworkPolicy });
+  const sandbox = await getProjectSandbox(run.projectId);
   await syncProjectFiles(sandbox, run.projectId);
   await sql`
     insert into public.sandbox_sessions (

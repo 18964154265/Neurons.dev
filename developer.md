@@ -111,3 +111,10 @@
 - 涉及代码文件：`app/login/page.tsx`、`lib/urls/app-url.ts`、`lib/env/server.ts`、`lib/llm/openrouter.ts`、`lib/tools/sandbox-credentials.ts`、`.env.example`、`README.md`、`supabase/config.toml` 及对应单元测试。
 - 关键数据结构或方法：新增 `resolveServerAppOrigin`、`createAppUrl` 与 `resolveSandboxAccessCredentials`；注册确认、密码重置和 OpenRouter 来源 Header 统一使用经校验的应用 Origin，Vercel Sandbox 在未显式配置 Access Token 时交由 SDK 从运行上下文解析 OIDC。
 - 上下游影响与依赖：生产部署不再静默回退到 localhost；Supabase Hosted Auth 仍需在 Dashboard 配置正式 Site URL 与允许的回调路径。Vercel 部署依赖 Secure Backend Access/OIDC Federation；非 OIDC 环境设置 `VERCEL_TOKEN` 时必须同时提供 Team 与 Project ID，失败不会回退到宿主机执行。
+
+### feat(workspace): run npm apps in live previews
+
+- Commit：`feat(workspace): run npm apps in live previews`
+- 涉及代码文件：`lib/tools/terminal.ts`、`lib/tools/preview.ts`、`lib/tools/workspace-files.ts`、`lib/preview/*`、`lib/agents/registry.ts`、`components/workspace/project-workspace.tsx`、`lib/files/file-tree.ts`、`app/api/v1/projects/[projectId]/preview/route.ts`、`app/globals.css`、`TRD.md`、`test_cases/project-preview.json` 及对应单元测试。
+- 关键数据结构或方法：新增 `preview_start` Tool、`PreviewStartInput`、`ProjectPreview`、`PreviewRepository.get` 与 `executePreviewStart`；复用项目持久 Sandbox 同步文件、运行 npm script、动态暴露端口并健康检查，记录 `preview.starting/ready/failed`、Terminal Session 和安全错误位置；Explorer 使用 `buildFileTreeRows` 与 `collapsedFolders` 支持目录折叠。
+- 上下游影响与依赖：Alex 的动态 Web 流程变为 `coding → npm install → npm run build（存在时）→ preview_start`，Preview API 和 Realtime 将 Sandbox 状态投影到 iframe，纯静态项目仍保留隔离 `srcDoc` fallback。运行依赖 Vercel Sandbox OIDC/Access Token、现有 `sandbox_sessions`/Terminal/Trace 表和 npm 项目的可用 dev script；无需新增数据库迁移。

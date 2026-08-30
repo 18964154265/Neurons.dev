@@ -9,6 +9,7 @@ import {
   Bot,
   Braces,
   ChevronDown,
+  ChevronRight,
   CircleStop,
   Check,
   Code2,
@@ -36,7 +37,13 @@ import { agentNamesForRun, workingAgentLabel } from "@/lib/agents/presentation";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { shouldSubmitTextareaOnEnter } from "@/lib/forms/submit-on-enter";
 import type { ConversationMessage } from "@/lib/chat/repository";
+import {
+  buildFileTreeRows,
+  filterCollapsedFileTreeRows,
+  folderPathsForFile,
+} from "@/lib/files/file-tree";
 import type { ProjectSummary } from "@/lib/projects/types";
+import type { ProjectPreview } from "@/lib/preview/types";
 import { buildStaticPreview } from "@/lib/preview/static-preview";
 import type { AgentRun } from "@/lib/runs/repository";
 import { runFailureMessage } from "@/lib/runs/failure";
@@ -77,62 +84,6 @@ type ProjectFile = {
   sourceAgentKey: string | null;
   updatedAt: string;
 };
-
-type FileTreeRow =
-  | { key: string; kind: "folder"; name: string; depth: number }
-  | {
-      key: string;
-      kind: "file";
-      name: string;
-      depth: number;
-      file: ProjectFile;
-    };
-
-function buildFileTreeRows(files: ProjectFile[]): FileTreeRow[] {
-  type FolderNode = {
-    folders: Map<string, FolderNode>;
-    files: Array<{ name: string; file: ProjectFile }>;
-  };
-  const root: FolderNode = { folders: new Map(), files: [] };
-  for (const file of files) {
-    const parts = file.path.split("/");
-    const fileName = parts.pop() ?? file.path;
-    let node = root;
-    for (const folderName of parts) {
-      let folder = node.folders.get(folderName);
-      if (!folder) {
-        folder = { folders: new Map(), files: [] };
-        node.folders.set(folderName, folder);
-      }
-      node = folder;
-    }
-    node.files.push({ name: fileName, file });
-  }
-
-  const rows: FileTreeRow[] = [];
-  function visit(node: FolderNode, depth: number, parentPath: string) {
-    for (const [name, folder] of [...node.folders].sort(([left], [right]) =>
-      left.localeCompare(right),
-    )) {
-      const path = parentPath ? `${parentPath}/${name}` : name;
-      rows.push({ key: `folder:${path}`, kind: "folder", name, depth });
-      visit(folder, depth + 1, path);
-    }
-    for (const entry of [...node.files].sort((left, right) =>
-      left.name.localeCompare(right.name),
-    )) {
-      rows.push({
-        key: `file:${entry.file.path}`,
-        kind: "file",
-        name: entry.name,
-        depth,
-        file: entry.file,
-      });
-    }
-  }
-  visit(root, 0, "");
-  return rows;
-}
 
 const views: Array<{ key: CanvasView; label: string; icon: React.ReactNode }> =
   [
@@ -254,6 +205,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   >(null);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [selectedTerminalSessionId, setSelectedTerminalSessionId] = useState<
     string | null
   >(null);
@@ -296,6 +250,17 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     queryFn: () =>
       apiRequest<TerminalSession[]>(`/api/v1/projects/${projectId}/terminal`),
     refetchInterval: () => (projectQuery.data?.activeRunId ? 750 : false),
+  });
+  const previewQuery = useQuery({
+    queryKey: ["preview", projectId],
+    queryFn: () =>
+      apiRequest<ProjectPreview | null>(
+        `/api/v1/projects/${projectId}/preview`,
+      ),
+    refetchInterval: (query) =>
+      query.state.data?.status === "starting" || projectQuery.data?.activeRunId
+        ? 1_000
+        : false,
   });
 
   const activeRunId = projectQuery.data?.activeRunId ?? null;
@@ -416,6 +381,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           queryClient.invalidateQueries({ queryKey: ["events"] });
           const row = payload.new as Record<string, unknown>;
           if (follow && row.event_type === "coding.started") setView("editor");
+          if (follow && row.event_type === "preview.ready") setView("preview");
         },
       )
       .on(
@@ -437,9 +403,20 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           table: "project_files",
           filter: `project_id=eq.${projectId}`,
         },
-        () => {
+        (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
           queryClient.invalidateQueries({ queryKey: ["files", projectId] });
-          if (follow) setView("editor");
+          if (follow) {
+            const row = payload.new as Record<string, unknown>;
+            if (typeof row.path === "string") {
+              const foldersToExpand = new Set(folderPathsForFile(row.path));
+              setCollapsedFolders((current) => {
+                const next = new Set(current);
+                for (const path of foldersToExpand) next.delete(path);
+                return next.size === current.size ? current : next;
+              });
+            }
+            setView("editor");
+          }
         },
       )
       .on(
@@ -470,6 +447,18 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         () => {
           queryClient.invalidateQueries({ queryKey: ["terminal", projectId] });
           if (follow) setView("terminal");
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "sandbox_sessions",
+          filter: `project_id=eq.${projectId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["preview", projectId] });
         },
       )
       .subscribe();
@@ -580,10 +569,21 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     () => buildFileTreeRows(filesQuery.data ?? []),
     [filesQuery.data],
   );
+  const visibleFileTreeRows = useMemo(
+    () => filterCollapsedFileTreeRows(fileTreeRows, collapsedFolders),
+    [collapsedFolders, fileTreeRows],
+  );
+
   const staticPreview = useMemo(
     () => buildStaticPreview(filesQuery.data ?? []),
     [filesQuery.data],
   );
+  const dynamicPreview =
+    previewQuery.data?.status === "ready" && previewQuery.data.url
+      ? previewQuery.data
+      : null;
+  const fallbackStaticPreview =
+    previewQuery.isSuccess && !previewQuery.data ? staticPreview : null;
 
   if (projectQuery.isLoading) {
     return (
@@ -1036,17 +1036,32 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 {filesQuery.isLoading ? (
                   <div className="empty-tree">正在加载项目文件…</div>
                 ) : null}
-                {fileTreeRows.map((row) =>
+                {visibleFileTreeRows.map((row) =>
                   row.kind === "folder" ? (
-                    <div
+                    <button
+                      type="button"
                       key={row.key}
                       className="file-tree-folder"
                       style={{ paddingLeft: 8 + row.depth * 14 }}
+                      aria-expanded={!collapsedFolders.has(row.path)}
+                      onClick={() =>
+                        setCollapsedFolders((current) => {
+                          const next = new Set(current);
+                          if (next.has(row.path)) next.delete(row.path);
+                          else next.add(row.path);
+                          return next;
+                        })
+                      }
+                      title={`${collapsedFolders.has(row.path) ? "展开" : "折叠"} ${row.path}`}
                     >
-                      <ChevronDown size={13} />
+                      {collapsedFolders.has(row.path) ? (
+                        <ChevronRight size={13} aria-hidden="true" />
+                      ) : (
+                        <ChevronDown size={13} aria-hidden="true" />
+                      )}
                       <Folder size={14} />
                       <span>{row.name}</span>
-                    </div>
+                    </button>
                   ) : (
                     <button
                       key={row.key}
@@ -1165,20 +1180,33 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               <div className="preview-addressbar">
                 <button
                   aria-label="刷新预览"
-                  disabled={!staticPreview}
+                  disabled={!dynamicPreview && !fallbackStaticPreview}
                   onClick={() => setPreviewRefreshToken((value) => value + 1)}
                 >
                   <RefreshCw size={14} />
                 </button>
                 <span>
-                  {staticPreview
-                    ? `preview://${staticPreview.entryPath}`
-                    : "Preview unavailable"}
+                  {dynamicPreview
+                    ? dynamicPreview.url
+                    : fallbackStaticPreview
+                      ? `preview://${fallbackStaticPreview.entryPath}`
+                      : previewQuery.data?.status === "starting"
+                        ? "Starting development server…"
+                        : "Preview unavailable"}
                 </span>
               </div>
-              {staticPreview ? (
+              {dynamicPreview ? (
                 <iframe
-                  key={`${staticPreview.entryPath}:${previewRefreshToken}:${(
+                  key={`${dynamicPreview.url}:${previewRefreshToken}`}
+                  className="static-preview-frame"
+                  title="项目 Web Preview"
+                  sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+                  referrerPolicy="no-referrer"
+                  src={dynamicPreview.url ?? undefined}
+                />
+              ) : fallbackStaticPreview ? (
+                <iframe
+                  key={`${fallbackStaticPreview.entryPath}:${previewRefreshToken}:${(
                     filesQuery.data ?? []
                   )
                     .map((file) => file.revision)
@@ -1187,16 +1215,32 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   title="项目 Web Preview"
                   sandbox="allow-scripts"
                   referrerPolicy="no-referrer"
-                  srcDoc={staticPreview.srcDoc}
+                  srcDoc={fallbackStaticPreview.srcDoc}
                 />
               ) : (
                 <div className="canvas-empty">
-                  <Eye size={28} />
-                  <strong>还没有可用静态预览</strong>
+                  {previewQuery.data?.status === "starting" ? (
+                    <LoaderCircle className="spin" size={28} />
+                  ) : (
+                    <Eye size={28} />
+                  )}
+                  <strong>
+                    {previewQuery.data?.status === "starting"
+                      ? "正在启动 Web Preview"
+                      : previewQuery.data?.status === "failed"
+                        ? "Web Preview 启动失败"
+                        : "还没有可用预览"}
+                  </strong>
                   <p>
-                    让 Alex 通过 coding 生成 index.html；本地 CSS 和 JavaScript
-                    会在隔离 iframe 中加载。
+                    React / Next.js / Vite 项目需要 Alex 先运行 npm 安装与构建，
+                    再通过 preview_start 启动开发服务器；纯静态项目仍可使用
+                    index.html 预览。
                   </p>
+                  {previewQuery.isError ? (
+                    <p className="inline-error">
+                      Preview 加载失败：{previewQuery.error.message}
+                    </p>
+                  ) : null}
                 </div>
               )}
             </div>

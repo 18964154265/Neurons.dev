@@ -1,0 +1,36 @@
+{
+  "endpoint": "GET /api/v1/projects/:projectId/preview",
+  "test_cases": [
+    {
+      "description": "项目所有者读取已就绪的 Sandbox Preview",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "data": {
+          "kind": "sandbox",
+          "status": "ready",
+          "url": "https://example-preview.vercel.run",
+          "port": 3000
+        }
+      }
+    },
+    {
+      "description": "项目尚未启动 Preview",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 200,
+      "expectedBody": { "data": null }
+    },
+    {
+      "description": "未登录用户读取 Preview",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 401,
+      "expectedErrorCode": "AUTH_REQUIRED"
+    },
+    {
+      "description": "非法项目 ID 被拒绝",
+      "projectId": "not-a-uuid",
+      "expectedStatus": 400,
+      "expectedErrorCode": "INVALID_REQUEST"
+    }
+  ]
+}
