@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  ENGINEER_AGENT_KEY,
+  resolveAgentDefinition,
+} from "@/lib/agents/registry";
 import { getDatabase } from "@/lib/db/postgres";
 import type { LLMToolCall, LLMUsage } from "@/lib/llm/types";
 
@@ -12,8 +16,11 @@ export type PreparedEngineerRun = {
   prompt: string;
 };
 
-export async function prepareEngineerRun(runId: string): Promise<PreparedEngineerRun> {
+export async function prepareEngineerRun(
+  runId: string,
+): Promise<PreparedEngineerRun> {
   const sql = getDatabase();
+  const engineer = resolveAgentDefinition(ENGINEER_AGENT_KEY);
   return sql.begin(async (transaction) => {
     const rows = await transaction<
       Array<{
@@ -54,7 +61,7 @@ export async function prepareEngineerRun(runId: string): Promise<PreparedEnginee
         role, kind, status, content, client_request_id
       ) values (
         ${run.project_id}::uuid, ${run.conversation_id}::uuid, ${run.owner_id}::uuid,
-        ${run.id}::uuid, 'p0-engineer', ${messageSequence},
+        ${run.id}::uuid, ${engineer.key}, ${messageSequence},
         'assistant', 'text', 'streaming', jsonb_build_object('text', ''),
         ${`workflow:${run.id}:assistant`}
       )
@@ -68,19 +75,44 @@ export async function prepareEngineerRun(runId: string): Promise<PreparedEnginee
       set status = 'running', started_at = coalesce(started_at, now()),
           last_event_sequence = last_event_sequence + 1,
           agent_plan_snapshot = jsonb_build_object(
-            'kind', 'temporary_p0', 'agents', jsonb_build_array('p0-engineer')
+            'kind', 'engineer', 'agents', jsonb_build_array(${engineer.key}::text)
           )
       where id = ${run.id}::uuid
       returning last_event_sequence::text
     `;
     const eventSequence = Number(eventRows[0]?.last_event_sequence);
     await transaction`
+      insert into public.project_agent_assignments (
+        project_id, agent_key, definition_version, source, status, assigned_run_id
+      ) values (
+        ${run.project_id}::uuid, ${engineer.key}, ${engineer.version},
+        'system', 'active', ${run.id}::uuid
+      )
+      on conflict (project_id, agent_key, removed_at) do update
+      set definition_version = excluded.definition_version,
+          source = excluded.source,
+          status = excluded.status,
+          assigned_run_id = excluded.assigned_run_id,
+          updated_at = now()
+    `;
+    await transaction`
+      insert into public.run_agent_states (
+        run_id, project_id, agent_key, definition_version, status, current_step, started_at
+      ) values (
+        ${run.id}::uuid, ${run.project_id}::uuid, ${engineer.key},
+        ${engineer.version}, 'running', 'implement', now()
+      )
+      on conflict (run_id, agent_key) do update
+      set status = 'running', current_step = 'implement',
+          started_at = coalesce(run_agent_states.started_at, now()), updated_at = now()
+    `;
+    await transaction`
       insert into public.trace_events (
         project_id, run_id, agent_key, sequence, event_type, status, summary, detail
       ) values (
-        ${run.project_id}::uuid, ${run.id}::uuid, 'p0-engineer', ${eventSequence},
-        'model.started', 'started', 'Engineer 已开始处理请求',
-        jsonb_build_object('temporaryDefinition', true)
+        ${run.project_id}::uuid, ${run.id}::uuid, ${engineer.key}, ${eventSequence},
+        'model.started', 'started', 'Alex 已开始处理请求',
+        jsonb_build_object('definitionVersion', ${engineer.version}::integer)
       )
     `;
 
@@ -109,6 +141,7 @@ export async function completeEngineerRun(
   output: { text: string; toolCalls: LLMToolCall[]; usage: LLMUsage | null },
 ) {
   const sql = getDatabase();
+  const engineer = resolveAgentDefinition(ENGINEER_AGENT_KEY);
   await sql.begin(async (transaction) => {
     const eventRows = await transaction<Array<{ last_event_sequence: string }>>`
       update public.agent_runs
@@ -130,11 +163,22 @@ export async function completeEngineerRun(
       insert into public.trace_events (
         project_id, run_id, agent_key, sequence, event_type, status, summary, detail
       ) values (
-        ${run.projectId}::uuid, ${run.runId}::uuid, 'p0-engineer',
+        ${run.projectId}::uuid, ${run.runId}::uuid, ${engineer.key},
         ${Number(completedRun.last_event_sequence)}, 'model.completed', 'completed',
-        'Engineer 已完成本轮响应',
+        'Alex 已完成本轮响应',
         ${transaction.json({ usage: output.usage, toolCalls: output.toolCalls })}
       )
+    `;
+    await transaction`
+      update public.run_agent_states
+      set status = 'completed', current_step = null, completed_at = now()
+      where run_id = ${run.runId}::uuid and agent_key = ${engineer.key}
+    `;
+    await transaction`
+      update public.project_agent_assignments
+      set status = 'completed', updated_at = now()
+      where project_id = ${run.projectId}::uuid and agent_key = ${engineer.key}
+        and removed_at is null and assigned_run_id = ${run.runId}::uuid
     `;
     await transaction`
       update public.projects
@@ -146,6 +190,7 @@ export async function completeEngineerRun(
 
 export async function failAgentRun(runId: string, failureCode: string) {
   const sql = getDatabase();
+  const engineer = resolveAgentDefinition(ENGINEER_AGENT_KEY);
   await sql.begin(async (transaction) => {
     const rows = await transaction<
       Array<{ project_id: string; last_event_sequence: string }>
@@ -154,7 +199,7 @@ export async function failAgentRun(runId: string, failureCode: string) {
       set status = 'failed', failure_code = ${failureCode}, completed_at = now(),
           last_event_sequence = last_event_sequence + 1
       where id = ${runId}::uuid
-        and status not in ('completed', 'failed', 'cancelled')
+        and status not in ('completed', 'failed', 'cancelled', 'cancelling')
       returning project_id::text, last_event_sequence::text
     `;
     const run = rows[0];
@@ -168,10 +213,21 @@ export async function failAgentRun(runId: string, failureCode: string) {
       insert into public.trace_events (
         project_id, run_id, agent_key, sequence, event_type, status, summary, detail
       ) values (
-        ${run.project_id}::uuid, ${runId}::uuid, 'p0-engineer',
+        ${run.project_id}::uuid, ${runId}::uuid, ${engineer.key},
         ${Number(run.last_event_sequence)}, 'run.failed', 'failed',
-        '任务执行失败', jsonb_build_object('code', ${failureCode})
+        '任务执行失败', jsonb_build_object('code', ${failureCode}::text)
       )
+    `;
+    await transaction`
+      update public.run_agent_states
+      set status = 'failed', current_step = null, completed_at = now()
+      where run_id = ${runId}::uuid and agent_key = ${engineer.key}
+    `;
+    await transaction`
+      update public.project_agent_assignments
+      set status = 'failed', updated_at = now()
+      where project_id = ${run.project_id}::uuid and agent_key = ${engineer.key}
+        and removed_at is null and assigned_run_id = ${runId}::uuid
     `;
     await transaction`
       update public.projects

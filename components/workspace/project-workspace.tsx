@@ -26,6 +26,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { apiRequest } from "@/lib/api/client";
+import { shouldSubmitTextareaOnEnter } from "@/lib/forms/submit-on-enter";
 import type { ConversationMessage } from "@/lib/chat/repository";
 import type { ProjectSummary } from "@/lib/projects/types";
 import type { AgentRun } from "@/lib/runs/repository";
@@ -55,12 +56,13 @@ type TraceEvent = {
   created_at: string;
 };
 
-const views: Array<{ key: CanvasView; label: string; icon: React.ReactNode }> = [
-  { key: "editor", label: "Editor", icon: <Code2 size={15} /> },
-  { key: "terminal", label: "Terminal", icon: <TerminalSquare size={15} /> },
-  { key: "preview", label: "Web Preview", icon: <Eye size={15} /> },
-  { key: "trace", label: "Trace", icon: <ScrollText size={15} /> },
-];
+const views: Array<{ key: CanvasView; label: string; icon: React.ReactNode }> =
+  [
+    { key: "editor", label: "Editor", icon: <Code2 size={15} /> },
+    { key: "terminal", label: "Terminal", icon: <TerminalSquare size={15} /> },
+    { key: "preview", label: "Web Preview", icon: <Eye size={15} /> },
+    { key: "trace", label: "Trace", icon: <ScrollText size={15} /> },
+  ];
 
 function messageText(message: ConversationMessage) {
   const value = message.content.text ?? message.content.summary ?? "";
@@ -74,7 +76,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
-  const [modeOverride, setModeOverride] = useState<"engineer" | "team" | null>(null);
+  const [modeOverride, setModeOverride] = useState<"engineer" | "team" | null>(
+    null,
+  );
   const [scheduleStrategyOverride, setScheduleStrategyOverride] = useState<
     "automatic" | "user_selected" | null
   >(null);
@@ -87,11 +91,14 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const messagesQuery = useQuery({
     queryKey: ["messages", projectId],
     queryFn: () =>
-      apiRequest<ConversationMessage[]>(`/api/v1/projects/${projectId}/messages?after=0&limit=100`),
+      apiRequest<ConversationMessage[]>(
+        `/api/v1/projects/${projectId}/messages?after=0&limit=100`,
+      ),
   });
   const agentsQuery = useQuery({
     queryKey: ["agents", projectId],
-    queryFn: () => apiRequest<AgentInfo[]>(`/api/v1/projects/${projectId}/agents`),
+    queryFn: () =>
+      apiRequest<AgentInfo[]>(`/api/v1/projects/${projectId}/agents`),
   });
 
   const activeRunId = projectQuery.data?.activeRunId ?? null;
@@ -101,17 +108,24 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     enabled: Boolean(activeRunId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && ["completed", "failed", "cancelled"].includes(status) ? false : 2500;
+      return status && ["completed", "failed", "cancelled"].includes(status)
+        ? false
+        : 2500;
     },
   });
   const eventsQuery = useQuery({
     queryKey: ["events", activeRunId],
-    queryFn: () => apiRequest<TraceEvent[]>(`/api/v1/runs/${activeRunId}/events?after=0&limit=200`),
+    queryFn: () =>
+      apiRequest<TraceEvent[]>(
+        `/api/v1/runs/${activeRunId}/events?after=0&limit=200`,
+      ),
     enabled: Boolean(activeRunId),
   });
   const mode = modeOverride ?? projectQuery.data?.defaultMode ?? "engineer";
   const scheduleStrategy =
-    scheduleStrategyOverride ?? projectQuery.data?.defaultScheduleStrategy ?? "automatic";
+    scheduleStrategyOverride ??
+    projectQuery.data?.defaultScheduleStrategy ??
+    "automatic";
 
   useEffect(() => {
     let supabase: ReturnType<typeof createSupabaseBrowserClient>;
@@ -124,12 +138,23 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       .channel(`project:${projectId}`, { config: { private: true } })
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "messages", filter: `project_id=eq.${projectId}` },
-        () => queryClient.invalidateQueries({ queryKey: ["messages", projectId] }),
+        {
+          event: "*",
+          schema: "public",
+          table: "messages",
+          filter: `project_id=eq.${projectId}`,
+        },
+        () =>
+          queryClient.invalidateQueries({ queryKey: ["messages", projectId] }),
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "agent_runs", filter: `project_id=eq.${projectId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "agent_runs",
+          filter: `project_id=eq.${projectId}`,
+        },
         () => {
           queryClient.invalidateQueries({ queryKey: ["project", projectId] });
           queryClient.invalidateQueries({ queryKey: ["run"] });
@@ -137,7 +162,12 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "trace_events", filter: `project_id=eq.${projectId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "trace_events",
+          filter: `project_id=eq.${projectId}`,
+        },
         () => queryClient.invalidateQueries({ queryKey: ["events"] }),
       )
       .subscribe();
@@ -158,7 +188,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             message,
             mode,
             scheduleStrategy,
-            agentKeys: scheduleStrategy === "user_selected" ? selectedAgents : [],
+            agentKeys:
+              scheduleStrategy === "user_selected" ? selectedAgents : [],
           }),
         },
       ),
@@ -178,11 +209,13 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         headers: { "Idempotency-Key": crypto.randomUUID() },
         body: "{}",
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["run", activeRunId] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["run", activeRunId] }),
   });
 
   const selectedTrace = useMemo(
-    () => eventsQuery.data?.find((event) => event.id === selectedTraceId) ?? null,
+    () =>
+      eventsQuery.data?.find((event) => event.id === selectedTraceId) ?? null,
     [eventsQuery.data, selectedTraceId],
   );
 
@@ -207,10 +240,14 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   const project = projectQuery.data;
   const runIsActive =
-    runQuery.data && !["completed", "failed", "cancelled"].includes(runQuery.data.status);
+    runQuery.data &&
+    !["completed", "failed", "cancelled"].includes(runQuery.data.status);
 
   function openTrace(message: ConversationMessage) {
-    const eventId = typeof message.content.eventId === "string" ? message.content.eventId : null;
+    const eventId =
+      typeof message.content.eventId === "string"
+        ? message.content.eventId
+        : null;
     setSelectedTraceId(eventId);
     setView("trace");
     setFollow(false);
@@ -219,7 +256,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const message = prompt.trim();
-    if (!message || sendMessage.isPending) return;
+    if (!message || sendMessage.isPending || runIsActive) return;
     sendMessage.mutate(message);
   }
 
@@ -227,12 +264,19 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     <main className="workspace-shell">
       <section className="chat-pane">
         <header className="chat-topbar">
-          <Link href="/dashboard" className="icon-button" aria-label="返回 Dashboard" title="主页">
+          <Link
+            href="/dashboard"
+            className="icon-button"
+            aria-label="返回 Dashboard"
+            title="主页"
+          >
             <Home size={17} />
           </Link>
           <div className="project-title">
             <strong>{project.name}</strong>
-            <span className={`run-indicator ${runQuery.data?.status ?? project.status}`}>
+            <span
+              className={`run-indicator ${runQuery.data?.status ?? project.status}`}
+            >
               {runQuery.data?.status ?? project.status}
             </span>
           </div>
@@ -253,12 +297,20 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 <p className="eyebrow">PROJECT HISTORY</p>
                 <strong>对话时间线</strong>
               </div>
-              <button className="icon-button" onClick={() => setHistoryOpen(false)} aria-label="关闭历史">
+              <button
+                className="icon-button"
+                onClick={() => setHistoryOpen(false)}
+                aria-label="关闭历史"
+              >
                 <X size={16} />
               </button>
             </div>
             {(messagesQuery.data ?? []).map((message) => (
-              <button key={message.id} className="history-item" onClick={() => setHistoryOpen(false)}>
+              <button
+                key={message.id}
+                className="history-item"
+                onClick={() => setHistoryOpen(false)}
+              >
                 <span>#{message.sequence}</span>
                 <p>{messageText(message).slice(0, 72) || message.kind}</p>
               </button>
@@ -268,7 +320,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
         <div className="chat-timeline" aria-live="polite">
           {messagesQuery.isLoading ? (
-            <div className="timeline-state"><LoaderCircle className="spin" size={17} /> 加载对话</div>
+            <div className="timeline-state">
+              <LoaderCircle className="spin" size={17} /> 加载对话
+            </div>
           ) : null}
           {!messagesQuery.isLoading && messagesQuery.data?.length === 0 ? (
             <div className="timeline-state">
@@ -277,14 +331,24 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             </div>
           ) : null}
           {(messagesQuery.data ?? []).map((message) => (
-            <article key={message.id} className={`chat-message ${message.role} ${message.kind}`}>
+            <article
+              key={message.id}
+              className={`chat-message ${message.role} ${message.kind}`}
+            >
               <div className="message-meta">
-                <span>{message.role === "user" ? "You" : message.agentKey ?? "Neurons"}</span>
+                <span>
+                  {message.role === "user"
+                    ? "You"
+                    : (message.agentKey ?? "Neurons")}
+                </span>
                 <small>#{message.sequence}</small>
               </div>
               <p>{messageText(message)}</p>
               {["thought_summary", "tool_summary"].includes(message.kind) ? (
-                <button className="trace-link" onClick={() => openTrace(message)}>
+                <button
+                  className="trace-link"
+                  onClick={() => openTrace(message)}
+                >
                   <Braces size={14} /> 在 Trace 中查看
                 </button>
               ) : null}
@@ -307,6 +371,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 <CircleStop size={17} />
               </button>
             </div>
+          ) : null}
+          {cancelRun.error ? (
+            <p className="inline-error" role="alert">
+              停止任务失败：{cancelRun.error.message} 请重试。
+            </p>
           ) : null}
         </div>
 
@@ -334,9 +403,24 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder={runIsActive ? "当前任务完成后可继续发送…" : "描述下一步修改…"}
+            onKeyDown={(event) => {
+              if (
+                !shouldSubmitTextareaOnEnter({
+                  key: event.key,
+                  shiftKey: event.shiftKey,
+                  isComposing: event.nativeEvent.isComposing,
+                })
+              )
+                return;
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }}
+            placeholder={
+              runIsActive
+                ? "可以先输入下一条需求，当前任务结束后即可发送…"
+                : "描述下一步修改…"
+            }
             rows={3}
-            disabled={Boolean(runIsActive)}
           />
           <div className="composer-footer">
             <div className="composer-selects">
@@ -371,22 +455,37 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             </div>
             <button
               className="send-button"
-              disabled={!prompt.trim() || sendMessage.isPending || Boolean(runIsActive)}
+              disabled={
+                !prompt.trim() || sendMessage.isPending || Boolean(runIsActive)
+              }
               aria-label="发送消息"
             >
-              {sendMessage.isPending ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />}
+              {sendMessage.isPending ? (
+                <LoaderCircle className="spin" size={18} />
+              ) : (
+                <ArrowUp size={18} />
+              )}
             </button>
           </div>
-          {sendMessage.error ? <p className="inline-error">{sendMessage.error.message}</p> : null}
+          {sendMessage.error ? (
+            <p className="inline-error">{sendMessage.error.message}</p>
+          ) : null}
         </form>
       </section>
 
       <section className="canvas-pane">
         <header className="canvas-globalbar">
           <div className="project-actions">
-            <button className="top-action"><GitBranch size={15} /> 项目</button>
-            <button className="top-action"><Radio size={15} /> 版本</button>
-            <button className="publish-button" disabled={!project.latestSuccessfulVersionId}>
+            <button className="top-action">
+              <GitBranch size={15} /> 项目
+            </button>
+            <button className="top-action">
+              <Radio size={15} /> 版本
+            </button>
+            <button
+              className="publish-button"
+              disabled={!project.latestSuccessfulVersionId}
+            >
               <Rocket size={15} /> Publish
             </button>
           </div>
@@ -412,7 +511,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               onClick={() => setFollow((value) => !value)}
               aria-pressed={follow}
             >
-              {follow ? <Play size={13} fill="currentColor" /> : <CircleStop size={13} />}
+              {follow ? (
+                <Play size={13} fill="currentColor" />
+              ) : (
+                <CircleStop size={13} />
+              )}
               {follow ? "跟随中" : "已暂停"}
             </button>
             <div className="agent-avatars" aria-label="Agent 分配">
@@ -426,12 +529,18 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   <span className="agent-tooltip">
                     <strong>{agent.name}</strong>
                     <p>{agent.description}</p>
-                    <small>{agent.tools.length ? agent.tools.join(" · ") : "尚未配置 Tools"}</small>
+                    <small>
+                      {agent.tools.length
+                        ? agent.tools.join(" · ")
+                        : "尚未配置 Tools"}
+                    </small>
                   </span>
                 </button>
               ))}
               {!agentsQuery.isLoading && agentsQuery.data?.length === 0 ? (
-                <span className="agents-empty" title="Agent 配置待设计">No agents</span>
+                <span className="agents-empty" title="Agent 配置待设计">
+                  No agents
+                </span>
               ) : null}
             </div>
           </div>
@@ -441,8 +550,12 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           {view === "editor" ? (
             <div className="editor-surface">
               <aside className="file-tree">
-                <div className="file-tree-title">EXPLORER <ChevronDown size={13} /></div>
-                <div className="empty-tree">项目文件会在 Sandbox 启动后出现</div>
+                <div className="file-tree-title">
+                  EXPLORER <ChevronDown size={13} />
+                </div>
+                <div className="empty-tree">
+                  项目文件会在 Sandbox 启动后出现
+                </div>
               </aside>
               <div className="editor-empty canvas-empty">
                 <FileCode2 size={28} />
@@ -453,7 +566,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           ) : null}
           {view === "terminal" ? (
             <div className="terminal-surface">
-              <div className="terminal-title"><TerminalSquare size={14} /> TERMINAL</div>
+              <div className="terminal-title">
+                <TerminalSquare size={14} /> TERMINAL
+              </div>
               <div className="canvas-empty dark-empty">
                 <span className="terminal-prompt">$</span>
                 <strong>暂无终端会话</strong>
@@ -464,7 +579,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           {view === "preview" ? (
             <div className="preview-surface">
               <div className="preview-addressbar">
-                <button aria-label="刷新预览" disabled><RefreshCw size={14} /></button>
+                <button aria-label="刷新预览" disabled>
+                  <RefreshCw size={14} />
+                </button>
                 <span>Preview unavailable</span>
               </div>
               <div className="canvas-empty">
@@ -478,7 +595,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             <div className="trace-surface">
               <aside className="trace-list">
                 <div className="trace-list-title">RUN TRACE</div>
-                {eventsQuery.isLoading ? <p className="muted">加载中…</p> : null}
+                {eventsQuery.isLoading ? (
+                  <p className="muted">加载中…</p>
+                ) : null}
                 {(eventsQuery.data ?? []).map((event) => (
                   <button
                     key={event.id}

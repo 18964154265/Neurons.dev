@@ -12,5 +12,29 @@
     "headers": { "Idempotency-Key": "cancel-run-002" },
     "expectedStatus": 202,
     "expected": { "alreadyTerminal": true }
+  },
+  {
+    "description": "Workflow 已中断或不存在时仍将数据库 Run 收口为 cancelled",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "cancel-run-stale-workflow-001" },
+    "fixture": { "workflowCancelError": "WORKFLOW_NOT_FOUND" },
+    "expectedStatus": 202,
+    "expected": { "status": "cancelled", "alreadyTerminal": false }
+  },
+  {
+    "description": "Workflow 取消接口无响应时在超时后仍收口数据库 Run",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "cancel-run-workflow-timeout-001" },
+    "fixture": { "workflowCancelState": "pending" },
+    "expectedStatus": 202,
+    "expected": { "status": "cancelled", "alreadyTerminal": false }
+  },
+  {
+    "description": "取消请求未写入数据库时返回错误且前端展示失败信息",
+    "method": "POST",
+    "headers": { "Idempotency-Key": "cancel-run-database-failure-001" },
+    "fixture": { "requestCancellationError": "RUN_CANCEL_FAILED" },
+    "expectedStatus": 500,
+    "expectedError": { "code": "RUN_CANCEL_FAILED", "retryable": true }
   }
 ]

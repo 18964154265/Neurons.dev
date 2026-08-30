@@ -26,3 +26,11 @@
 - 涉及代码文件：`app/login/page.tsx`、`app/reset-password/page.tsx`、`components/dashboard/dashboard.tsx`、`lib/auth/credentials.ts`、`lib/forms/submit-on-enter.ts`、`app/globals.css`、`README.md` 及对应测试。
 - 关键数据结构或方法：新增 Email/Password 注册登录、密码重置、当前设备退出、认证输入校验和输入框 Enter/Shift+Enter 判定。
 - 上下游影响与依赖：依赖 Supabase Auth Cookie Session、回调路由和 `proxy.ts` Token 刷新；同一 `auth.users.id` 继续通过 RLS 读取原项目，README 补充本地环境、迁移与 Auth Redirect 配置。
+
+### fix(runs): reconcile interrupted executions
+
+- Commit：`fix(runs): reconcile interrupted executions`
+- 涉及代码文件：`app/api/v1/runs/[runId]/cancel/route.ts`、`lib/runs/cancellation.ts`、`lib/runs/worker-store.ts`、`components/workspace/project-workspace.tsx`、`test_cases/run-cancel.json` 及对应测试。
+- 关键数据结构或方法：新增 `cancelRunAndReconcile`，为 Workflow 取消设置有界等待，并保证外部取消失败后继续调用 `confirmCancelled`；`failAgentRun` 不再覆盖 `cancelling`；Run 活跃时输入框保持可编辑，取消请求失败通过 `cancelRun.error` 展示。
+- 报错定位与修复：中断模型流产生 `MODEL_STREAM_INTERRUPTED` 后，`failAgentRun` 在 `jsonb_build_object` 中传入未显式定型的 `${failureCode}`，Postgres 报 `could not determine data type of parameter $4`，导致失败收口事务整体回滚、Run 长期停留在 `running`。现已将参数显式转换为 `text`，并补齐取消异常、超时及状态竞态的收口路径。
+- 上下游影响与依赖：取消 API 仍以 `request_run_cancel` 和 `confirm_run_cancelled` 为业务状态事实来源；Vercel Workflow 取消变成有界的外部清理步骤，迟到的完成、失败和流式写入均由数据库状态条件拦截。既有卡死记录不会由代码提交自动修改，需要通过已修复的取消接口单独收口。
