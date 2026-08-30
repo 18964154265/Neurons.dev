@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUp,
+  AlertTriangle,
   Bot,
   Braces,
   ChevronDown,
@@ -26,10 +27,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { apiRequest } from "@/lib/api/client";
+import { agentNamesForRun, workingAgentLabel } from "@/lib/agents/presentation";
+import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { shouldSubmitTextareaOnEnter } from "@/lib/forms/submit-on-enter";
 import type { ConversationMessage } from "@/lib/chat/repository";
 import type { ProjectSummary } from "@/lib/projects/types";
 import type { AgentRun } from "@/lib/runs/repository";
+import { runFailureMessage } from "@/lib/runs/failure";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type CanvasView = "editor" | "terminal" | "preview" | "trace";
@@ -94,6 +98,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       apiRequest<ConversationMessage[]>(
         `/api/v1/projects/${projectId}/messages?after=0&limit=100`,
       ),
+    refetchInterval: () => (projectQuery.data?.activeRunId ? 750 : false),
   });
   const agentsQuery = useQuery({
     queryKey: ["agents", projectId],
@@ -102,10 +107,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   });
 
   const activeRunId = projectQuery.data?.activeRunId ?? null;
+  const observedRunId = activeRunId ?? projectQuery.data?.latestRunId ?? null;
   const runQuery = useQuery({
-    queryKey: ["run", activeRunId],
-    queryFn: () => apiRequest<AgentRun>(`/api/v1/runs/${activeRunId}`),
-    enabled: Boolean(activeRunId),
+    queryKey: ["run", observedRunId],
+    queryFn: () => apiRequest<AgentRun>(`/api/v1/runs/${observedRunId}`),
+    enabled: Boolean(observedRunId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status && ["completed", "failed", "cancelled"].includes(status)
@@ -114,12 +120,18 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const eventsQuery = useQuery({
-    queryKey: ["events", activeRunId],
+    queryKey: ["events", observedRunId],
     queryFn: () =>
       apiRequest<TraceEvent[]>(
-        `/api/v1/runs/${activeRunId}/events?after=0&limit=200`,
+        `/api/v1/runs/${observedRunId}/events?after=0&limit=200`,
       ),
-    enabled: Boolean(activeRunId),
+    enabled: Boolean(observedRunId),
+    refetchInterval: () => {
+      const status = runQuery.data?.status;
+      return status && ["completed", "failed", "cancelled"].includes(status)
+        ? false
+        : 2500;
+    },
   });
   const mode = modeOverride ?? projectQuery.data?.defaultMode ?? "engineer";
   const scheduleStrategy =
@@ -156,8 +168,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           filter: `project_id=eq.${projectId}`,
         },
         () => {
+          queryClient.invalidateQueries({ queryKey: ["messages", projectId] });
           queryClient.invalidateQueries({ queryKey: ["project", projectId] });
           queryClient.invalidateQueries({ queryKey: ["run"] });
+          queryClient.invalidateQueries({ queryKey: ["events"] });
         },
       )
       .on(
@@ -170,12 +184,29 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         },
         () => queryClient.invalidateQueries({ queryKey: ["events"] }),
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "project_agent_assignments",
+          filter: `project_id=eq.${projectId}`,
+        },
+        () =>
+          queryClient.invalidateQueries({ queryKey: ["agents", projectId] }),
+      )
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
   }, [projectId, queryClient]);
+
+  useEffect(() => {
+    if (!observedRunId || runQuery.data?.lastEventSequence === undefined)
+      return;
+    void queryClient.invalidateQueries({ queryKey: ["events", observedRunId] });
+  }, [observedRunId, queryClient, runQuery.data?.lastEventSequence]);
 
   const sendMessage = useMutation({
     mutationFn: (message: string) =>
@@ -198,6 +229,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["messages", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["agents", projectId] }),
       ]);
     },
   });
@@ -213,11 +245,14 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       queryClient.invalidateQueries({ queryKey: ["run", activeRunId] }),
   });
 
-  const selectedTrace = useMemo(
-    () =>
-      eventsQuery.data?.find((event) => event.id === selectedTraceId) ?? null,
-    [eventsQuery.data, selectedTraceId],
-  );
+  const selectedTrace = useMemo(() => {
+    const events = eventsQuery.data ?? [];
+    return (
+      events.find((event) => event.id === selectedTraceId) ??
+      (view === "trace" ? events.at(-1) : null) ??
+      null
+    );
+  }, [eventsQuery.data, selectedTraceId, view]);
 
   if (projectQuery.isLoading) {
     return (
@@ -242,6 +277,20 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const runIsActive =
     runQuery.data &&
     !["completed", "failed", "cancelled"].includes(runQuery.data.status);
+  const failedRun = runQuery.data?.status === "failed" ? runQuery.data : null;
+  const workingAgentNames = agentNamesForRun(
+    agentsQuery.data ?? [],
+    runQuery.data?.id ?? null,
+  );
+
+  async function openRunTrace() {
+    setView("trace");
+    setFollow(false);
+    const result = await eventsQuery.refetch();
+    const events = result.data ?? eventsQuery.data ?? [];
+    const failureEvent = events.findLast((event) => event.status === "failed");
+    setSelectedTraceId(failureEvent?.id ?? null);
+  }
 
   function openTrace(message: ConversationMessage) {
     const eventId =
@@ -343,7 +392,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 </span>
                 <small>#{message.sequence}</small>
               </div>
-              <p>{messageText(message)}</p>
+              <MarkdownMessage
+                content={messageText(message)}
+                streaming={message.status === "streaming"}
+              />
               {["thought_summary", "tool_summary"].includes(message.kind) ? (
                 <button
                   className="trace-link"
@@ -358,7 +410,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             <div className="running-card">
               <span className="pulse" />
               <div>
-                <strong>Agent 正在工作</strong>
+                <strong>{workingAgentLabel(workingAgentNames)}</strong>
                 <p>{runQuery.data?.status.replaceAll("_", " ")}</p>
               </div>
               <button
@@ -371,6 +423,26 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 <CircleStop size={17} />
               </button>
             </div>
+          ) : null}
+          {failedRun ? (
+            <div className="run-result-card failed" role="alert">
+              <AlertTriangle size={17} aria-hidden="true" />
+              <div>
+                <strong>任务执行失败</strong>
+                <p>{runFailureMessage(failedRun.failureCode)}</p>
+              </div>
+              <button
+                className="text-button"
+                onClick={() => void openRunTrace()}
+              >
+                查看 Trace
+              </button>
+            </div>
+          ) : null}
+          {runQuery.isError ? (
+            <p className="inline-error" role="alert">
+              执行结果加载失败：{runQuery.error.message}
+            </p>
           ) : null}
           {cancelRun.error ? (
             <p className="inline-error" role="alert">
@@ -595,13 +667,14 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             <div className="trace-surface">
               <aside className="trace-list">
                 <div className="trace-list-title">RUN TRACE</div>
-                {eventsQuery.isLoading ? (
+                {eventsQuery.isLoading ||
+                (eventsQuery.isFetching && !eventsQuery.data?.length) ? (
                   <p className="muted">加载中…</p>
                 ) : null}
                 {(eventsQuery.data ?? []).map((event) => (
                   <button
                     key={event.id}
-                    className={selectedTraceId === event.id ? "active" : ""}
+                    className={selectedTrace?.id === event.id ? "active" : ""}
                     onClick={() => setSelectedTraceId(event.id)}
                   >
                     <span>#{event.sequence}</span>
@@ -611,8 +684,21 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                     </div>
                   </button>
                 ))}
-                {!eventsQuery.isLoading && eventsQuery.data?.length === 0 ? (
+                {!eventsQuery.isFetching &&
+                !eventsQuery.isError &&
+                eventsQuery.data?.length === 0 ? (
                   <p className="empty-trace">当前 Run 还没有可见 Trace。</p>
+                ) : null}
+                {eventsQuery.isError ? (
+                  <div className="empty-trace" role="alert">
+                    <p>Trace 加载失败：{eventsQuery.error.message}</p>
+                    <button
+                      className="text-button"
+                      onClick={() => void eventsQuery.refetch()}
+                    >
+                      重新加载
+                    </button>
+                  </div>
                 ) : null}
               </aside>
               <article className="trace-detail">

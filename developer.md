@@ -48,3 +48,10 @@
 - 涉及代码文件：`workflows/steps.ts`、`workflows/agent-run.ts`、`lib/runs/worker-store.ts`、`lib/runs/failure.ts`、`lib/runs/streaming.ts`、`lib/llm/errors.ts`、`lib/errors/located.ts`、`lib/agents/engineer-turn.ts` 及对应单元测试。
 - 关键数据结构或方法：新增 `ModelFailure`、`LocatedErrorDetail`、脱敏诊断序列化/恢复、Provider 瞬时错误受控重试和 `shouldFlushAssistantStream`；消息 JSONB 参数显式转换为 `text`，Run 失败 Trace 持久化稳定错误码、触发位置与安全摘要。
 - 上下游影响与依赖：OpenRouter、Agent Loop、Workflow 和 Postgres 写入错误不再互相误判；模型失败只重试明确的瞬时类别，内部持久化失败直接收口并可在 Trace 定位。前端错误文案和流式消息展示依赖新增的失败码与批量写入节奏。
+
+### feat(workspace): stream markdown and recover run feedback
+
+- Commit：`feat(workspace): stream markdown and recover run feedback`
+- 涉及代码文件：`components/workspace/project-workspace.tsx`、`components/chat/markdown-message.tsx`、`package.json`、`pnpm-lock.yaml` 及 Markdown 组件测试；相关视觉规则位于前序 UI 提交的 `app/globals.css`。
+- 关键数据结构或方法：新增 `MarkdownMessage`，通过 `react-markdown` 与 `remark-gfm` 安全渲染消息并显示流式光标；消息活跃期补拉、Run/Trace 确定性刷新、失败 Trace 定位及真实执行 Agent 名称展示接入工作区。
+- 上下游影响与依赖：前端消费 Postgres/Realtime 持久化的增量 `messages.content.text`，Realtime 丢失时由轮询和 `lastEventSequence` 补齐；原始 HTML 不执行，外部链接使用隔离的新标签页。依赖后端稳定失败码、`latestRunId`、Agent 分配投影和流式批量写入。
