@@ -41,3 +41,10 @@
 - 涉及代码文件：`components/dashboard/dashboard.tsx`、`app/api/v1/projects/[projectId]/route.ts`、`lib/projects/*`、`lib/agents/scheduling.ts`、`lib/agents/presentation.ts`、`lib/chat/repository.ts`、`app/globals.css`、两条 `20260830000*` 兼容迁移及对应测试和接口用例。
 - 关键数据结构或方法：新增项目重命名与软删除交互、`archiveProjectSchema`、`ProjectRepository.archive`、`latestRunId`、Engineer/Team 默认 Agent 解析和既有项目默认分配回填；取消函数改用具名唯一约束消除 PL/pgSQL 参数歧义。
 - 上下游影响与依赖：Dashboard 通过项目 PATCH/DELETE API 维护项目，Project/Chat 创建链统一在服务端补齐 Alex 或 Mike；工作区 Agent 展示依赖分配回填结果。部署时需按 README 顺序应用取消修复与默认分配迁移。
+
+### fix(runs): preserve diagnostics and stream safely
+
+- Commit：`fix(runs): preserve diagnostics and stream safely`
+- 涉及代码文件：`workflows/steps.ts`、`workflows/agent-run.ts`、`lib/runs/worker-store.ts`、`lib/runs/failure.ts`、`lib/runs/streaming.ts`、`lib/llm/errors.ts`、`lib/errors/located.ts`、`lib/agents/engineer-turn.ts` 及对应单元测试。
+- 关键数据结构或方法：新增 `ModelFailure`、`LocatedErrorDetail`、脱敏诊断序列化/恢复、Provider 瞬时错误受控重试和 `shouldFlushAssistantStream`；消息 JSONB 参数显式转换为 `text`，Run 失败 Trace 持久化稳定错误码、触发位置与安全摘要。
+- 上下游影响与依赖：OpenRouter、Agent Loop、Workflow 和 Postgres 写入错误不再互相误判；模型失败只重试明确的瞬时类别，内部持久化失败直接收口并可在 Trace 定位。前端错误文案和流式消息展示依赖新增的失败码与批量写入节奏。

@@ -2,8 +2,16 @@ import type { ChatCompletionChunk } from "openai/resources/chat/completions.mjs"
 import { describe, expect, it, vi } from "vitest";
 
 import { runEngineerTurn } from "@/lib/agents/engineer-turn";
-import { classifyModelError } from "@/lib/llm/errors";
-import { OpenRouterLLMClient, readOpenRouterConfiguration } from "@/lib/llm/openrouter";
+import {
+  classifyModelError,
+  describeModelError,
+  extractModelFailure,
+  serializeModelFailure,
+} from "@/lib/llm/errors";
+import {
+  OpenRouterLLMClient,
+  readOpenRouterConfiguration,
+} from "@/lib/llm/openrouter";
 
 async function* chunks(values: ChatCompletionChunk[]) {
   yield* values;
@@ -51,7 +59,10 @@ describe("OpenRouterLLMClient", () => {
               finish_reason: "tool_calls",
               delta: {
                 tool_calls: [
-                  { index: 0, function: { name: "file", arguments: '"a.ts"}' } },
+                  {
+                    index: 0,
+                    function: { name: "file", arguments: '"a.ts"}' },
+                  },
                 ],
               },
             },
@@ -71,7 +82,9 @@ describe("OpenRouterLLMClient", () => {
     );
 
     const events = [];
-    for await (const event of client.stream({ messages: [{ role: "user", content: "Build" }] })) {
+    for await (const event of client.stream({
+      messages: [{ role: "user", content: "Build" }],
+    })) {
       events.push(event);
     }
 
@@ -83,7 +96,12 @@ describe("OpenRouterLLMClient", () => {
       { type: "text_delta", text: "Working" },
       {
         type: "tool_call_delta",
-        toolCall: { index: 0, id: "call-1", name: "write_", arguments: '{"path":' },
+        toolCall: {
+          index: 0,
+          id: "call-1",
+          name: "write_",
+          arguments: '{"path":',
+        },
       },
       {
         type: "tool_call_delta",
@@ -124,7 +142,12 @@ describe("runEngineerTurn", () => {
         yield { type: "text_delta" as const, text: "Done" };
         yield {
           type: "tool_call_delta" as const,
-          toolCall: { index: 0, id: "call-1", name: "write_", arguments: '{"path":' },
+          toolCall: {
+            index: 0,
+            id: "call-1",
+            name: "write_",
+            arguments: '{"path":',
+          },
         };
         yield {
           type: "tool_call_delta" as const,
@@ -139,7 +162,12 @@ describe("runEngineerTurn", () => {
     };
 
     const result = await runEngineerTurn(client, {
-      agent: { key: "configured-later", version: 1, instructions: "Build safely.", tools: [] },
+      agent: {
+        key: "configured-later",
+        version: 1,
+        instructions: "Build safely.",
+        tools: [],
+      },
       conversation: [{ role: "user", content: "Create a file" }],
     });
 
@@ -147,7 +175,12 @@ describe("runEngineerTurn", () => {
       type: "completed",
       text: "Done",
       toolCalls: [
-        { index: 0, id: "call-1", name: "write_file", arguments: '{"path":"a.ts"}' },
+        {
+          index: 0,
+          id: "call-1",
+          name: "write_file",
+          arguments: '{"path":"a.ts"}',
+        },
       ],
       usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
     });
@@ -161,8 +194,43 @@ describe("classifyModelError", () => {
     [{ name: "AbortError" }, "MODEL_TIMEOUT"],
     [{ code: "context_length_exceeded" }, "MODEL_CONTEXT_EXCEEDED"],
     [{ status: 503 }, "MODEL_UNAVAILABLE"],
+    [{ status: 400 }, "MODEL_INVALID_REQUEST"],
     [{ code: "invalid_tool_arguments" }, "MODEL_INVALID_TOOL_CALL"],
   ] as const)("normalizes %o as %s", (error, expected) => {
     expect(classifyModelError(error)).toBe(expected);
+  });
+
+  it("keeps bounded provider diagnostics and redacts credentials", () => {
+    const failure = describeModelError({
+      status: 503,
+      code: "provider_unavailable",
+      request_id: "request-123",
+      message:
+        'Bearer secret-value failed with sk-sensitive-token api_key="another-secret"',
+    });
+
+    expect(failure).toEqual({
+      code: "MODEL_UNAVAILABLE",
+      retryable: true,
+      provider: {
+        status: 503,
+        code: "provider_unavailable",
+        requestId: "request-123",
+        message:
+          'Bearer [REDACTED] failed with [REDACTED] api_key="[REDACTED]"',
+      },
+    });
+  });
+
+  it("recovers serialized diagnostics from a workflow wrapper", () => {
+    const failure = describeModelError({
+      status: 429,
+      message: "Rate limited",
+    });
+    const wrapped = new Error(
+      `Step failed: ${serializeModelFailure(failure)} after retries`,
+    );
+
+    expect(extractModelFailure(wrapped)).toEqual(failure);
   });
 });

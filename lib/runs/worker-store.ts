@@ -5,6 +5,7 @@ import {
   resolveAgentDefinition,
 } from "@/lib/agents/registry";
 import { getDatabase } from "@/lib/db/postgres";
+import { locatedError } from "@/lib/errors/located";
 import type { LLMToolCall, LLMUsage } from "@/lib/llm/types";
 
 export type PreparedEngineerRun = {
@@ -129,11 +130,19 @@ export async function prepareEngineerRun(
 
 export async function updateAssistantStream(messageId: string, text: string) {
   const sql = getDatabase();
-  await sql`
-    update public.messages
-    set content = jsonb_build_object('text', ${text}), status = 'streaming'
-    where id = ${messageId}::uuid and status = 'streaming'
-  `;
+  try {
+    await sql`
+      update public.messages
+      set content = jsonb_build_object('text', ${text}::text), status = 'streaming'
+      where id = ${messageId}::uuid and status = 'streaming'
+    `;
+  } catch (error) {
+    throw locatedError(
+      error,
+      "ASSISTANT_STREAM_PERSIST_FAILED",
+      "lib/runs/worker-store.updateAssistantStream",
+    );
+  }
 }
 
 export async function completeEngineerRun(
@@ -155,7 +164,7 @@ export async function completeEngineerRun(
     if (!completedRun) return;
     await transaction`
       update public.messages
-      set content = jsonb_build_object('text', ${output.text}),
+      set content = jsonb_build_object('text', ${output.text}::text),
           status = 'completed', completed_at = now()
       where id = ${run.assistantMessageId}::uuid and status = 'streaming'
     `;
@@ -188,7 +197,11 @@ export async function completeEngineerRun(
   });
 }
 
-export async function failAgentRun(runId: string, failureCode: string) {
+export async function failAgentRun(
+  runId: string,
+  failureCode: string,
+  failureDetail?: Record<string, unknown>,
+) {
   const sql = getDatabase();
   const engineer = resolveAgentDefinition(ENGINEER_AGENT_KEY);
   await sql.begin(async (transaction) => {
@@ -215,7 +228,10 @@ export async function failAgentRun(runId: string, failureCode: string) {
       ) values (
         ${run.project_id}::uuid, ${runId}::uuid, ${engineer.key},
         ${Number(run.last_event_sequence)}, 'run.failed', 'failed',
-        '任务执行失败', jsonb_build_object('code', ${failureCode}::text)
+        '任务执行失败', ${transaction.json({
+          code: failureCode,
+          ...failureDetail,
+        })}
       )
     `;
     await transaction`

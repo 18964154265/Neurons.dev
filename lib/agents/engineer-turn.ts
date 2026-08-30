@@ -5,6 +5,7 @@ import type {
   LLMToolCall,
   LLMUsage,
 } from "@/lib/llm/types";
+import { locatedError } from "@/lib/errors/located";
 
 export type EngineerDefinition = {
   key: string;
@@ -17,7 +18,12 @@ export type EngineerDefinition = {
 export type EngineerTurnEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_call_progress"; toolCall: LLMToolCall }
-  | { type: "completed"; text: string; toolCalls: LLMToolCall[]; usage: LLMUsage | null };
+  | {
+      type: "completed";
+      text: string;
+      toolCalls: LLMToolCall[];
+      usage: LLMUsage | null;
+    };
 
 export type EngineerTurnInput = {
   agent: EngineerDefinition;
@@ -26,7 +32,10 @@ export type EngineerTurnInput = {
   onEvent?: (event: EngineerTurnEvent) => void | Promise<void>;
 };
 
-function mergeToolCall(current: LLMToolCall | undefined, delta: LLMToolCall): LLMToolCall {
+function mergeToolCall(
+  current: LLMToolCall | undefined,
+  delta: LLMToolCall,
+): LLMToolCall {
   return {
     index: delta.index,
     id: delta.id || current?.id || "",
@@ -35,9 +44,20 @@ function mergeToolCall(current: LLMToolCall | undefined, delta: LLMToolCall): LL
   };
 }
 
-export async function runEngineerTurn(client: LLMClient, input: EngineerTurnInput) {
-  if (!input.agent.key || input.agent.version < 1 || !input.agent.instructions.trim()) {
-    throw new Error("INVALID_ENGINEER_DEFINITION");
+export async function runEngineerTurn(
+  client: LLMClient,
+  input: EngineerTurnInput,
+) {
+  if (
+    !input.agent.key ||
+    input.agent.version < 1 ||
+    !input.agent.instructions.trim()
+  ) {
+    throw locatedError(
+      new Error("Agent key, version, and instructions are required"),
+      "ENGINEER_DEFINITION_INVALID",
+      "lib/agents/engineer-turn.runEngineerTurn",
+    );
   }
 
   let text = "";
@@ -60,7 +80,10 @@ export async function runEngineerTurn(client: LLMClient, input: EngineerTurnInpu
       text += event.text;
       await input.onEvent?.(event);
     } else if (event.type === "tool_call_delta") {
-      const merged = mergeToolCall(toolCalls.get(event.toolCall.index), event.toolCall);
+      const merged = mergeToolCall(
+        toolCalls.get(event.toolCall.index),
+        event.toolCall,
+      );
       toolCalls.set(event.toolCall.index, merged);
       await input.onEvent?.({ type: "tool_call_progress", toolCall: merged });
     } else if (event.type === "usage") {
@@ -71,7 +94,9 @@ export async function runEngineerTurn(client: LLMClient, input: EngineerTurnInpu
   const completed: EngineerTurnEvent = {
     type: "completed",
     text,
-    toolCalls: [...toolCalls.values()].sort((left, right) => left.index - right.index),
+    toolCalls: [...toolCalls.values()].sort(
+      (left, right) => left.index - right.index,
+    ),
     usage,
   };
   await input.onEvent?.(completed);
