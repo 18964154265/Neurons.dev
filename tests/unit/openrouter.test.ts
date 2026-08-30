@@ -125,6 +125,49 @@ describe("OpenRouterLLMClient", () => {
     ).toMatchObject({ defaultModel: "provider/model" });
   });
 
+  it("coalesces tiny provider text chunks before emitting model events", async () => {
+    const create = vi.fn().mockResolvedValue(
+      chunks([
+        chunk({
+          choices: [
+            { index: 0, finish_reason: null, delta: { content: "Hel" } },
+          ],
+        }),
+        chunk({
+          choices: [
+            { index: 0, finish_reason: null, delta: { content: "lo " } },
+          ],
+        }),
+        chunk({
+          choices: [
+            { index: 0, finish_reason: "stop", delta: { content: "world" } },
+          ],
+        }),
+      ]),
+    );
+    const client = new OpenRouterLLMClient(
+      {
+        apiKey: "test-key",
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultModel: "provider/model",
+        appURL: "http://localhost:3000",
+      },
+      { create },
+    );
+
+    const events = [];
+    for await (const event of client.stream({
+      messages: [{ role: "user", content: "Say hello" }],
+    })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: "text_delta", text: "Hello world" },
+      { type: "completed", finishReason: "stop" },
+    ]);
+  });
+
   it("accepts the real environment model alias", () => {
     expect(
       readOpenRouterConfiguration({

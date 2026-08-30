@@ -1052,7 +1052,11 @@ input::placeholder {
   background: #eef1f5;
   font-weight: 700;
 }
-.streaming-cursor {
+.markdown-content-streaming {
+  white-space: pre-wrap;
+}
+.markdown-content-streaming::after {
+  content: "";
   display: inline-block;
   width: 6px;
   height: 13px;

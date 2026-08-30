@@ -84,7 +84,8 @@ export async function runAgentModelStep(
   for (let toolTurn = 0; toolTurn < 8; toolTurn += 1) {
     let result: Awaited<ReturnType<typeof runEngineerTurn>> | null = null;
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      let turnText = "";
+      const turnTextParts: string[] = [];
+      let turnTextLength = 0;
       let lastPersistedLength = completedText.length;
       let lastPersistedAt = Date.now();
       try {
@@ -93,9 +94,10 @@ export async function runAgentModelStep(
           conversation,
           onEvent: async (event) => {
             if (event.type !== "text_delta") return;
-            turnText += event.text;
-            const streamedText = `${completedText}${turnText}`;
-            const pendingCharacters = streamedText.length - lastPersistedLength;
+            turnTextParts.push(event.text);
+            turnTextLength += event.text.length;
+            const currentLength = completedText.length + turnTextLength;
+            const pendingCharacters = currentLength - lastPersistedLength;
             const elapsed = Date.now() - lastPersistedAt;
             if (
               !shouldFlushAssistantStream({
@@ -104,7 +106,8 @@ export async function runAgentModelStep(
               })
             )
               return;
-            lastPersistedLength = streamedText.length;
+            const streamedText = `${completedText}${turnTextParts.join("")}`;
+            lastPersistedLength = currentLength;
             lastPersistedAt = Date.now();
             await store.updateAssistantStream(
               turn.assistantMessageId,

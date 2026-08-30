@@ -223,6 +223,7 @@ export async function updateAssistantStream(messageId: string, text: string) {
       update public.messages
       set content = jsonb_build_object('text', ${text}::text), status = 'streaming'
       where id = ${messageId}::uuid and status = 'streaming'
+        and content ->> 'text' is distinct from ${text}::text
     `;
   } catch (error) {
     throw locatedError(

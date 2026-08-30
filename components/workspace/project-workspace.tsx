@@ -29,7 +29,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiRequest } from "@/lib/api/client";
 import { agentNamesForRun, workingAgentLabel } from "@/lib/agents/presentation";
@@ -164,6 +164,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [previewRefreshToken, setPreviewRefreshToken] = useState(0);
+  const pendingMessageUpdatesRef = useRef(
+    new Map<string, Record<string, unknown>>(),
+  );
+  const messageUpdateFrameRef = useRef<number | null>(null);
 
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
@@ -231,6 +235,37 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     } catch {
       return;
     }
+    const flushMessageUpdates = () => {
+      messageUpdateFrameRef.current = null;
+      if (!pendingMessageUpdatesRef.current.size) return;
+      const updates = new Map(pendingMessageUpdatesRef.current);
+      pendingMessageUpdatesRef.current.clear();
+      queryClient.setQueryData<ConversationMessage[]>(
+        ["messages", projectId],
+        (current) =>
+          current?.map((message) => {
+            const row = updates.get(message.id);
+            if (!row) return message;
+            return {
+              ...message,
+              status:
+                (row.status as ConversationMessage["status"] | undefined) ??
+                message.status,
+              content: (row.content ?? message.content) as Record<
+                string,
+                unknown
+              >,
+            };
+          }),
+      );
+    };
+    const scheduleMessageUpdate = (row: Record<string, unknown>) => {
+      if (typeof row.id !== "string") return;
+      pendingMessageUpdatesRef.current.set(row.id, row);
+      if (messageUpdateFrameRef.current !== null) return;
+      messageUpdateFrameRef.current =
+        window.requestAnimationFrame(flushMessageUpdates);
+    };
     const channel = supabase
       .channel(`project:${projectId}`, { config: { private: true } })
       .on(
@@ -244,22 +279,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
           const row = payload.new as Record<string, unknown>;
           if (payload.eventType === "UPDATE" && typeof row.id === "string") {
-            queryClient.setQueryData<ConversationMessage[]>(
-              ["messages", projectId],
-              (current) =>
-                current?.map((message) =>
-                  message.id === row.id
-                    ? {
-                        ...message,
-                        status: row.status as ConversationMessage["status"],
-                        content: (row.content ?? message.content) as Record<
-                          string,
-                          unknown
-                        >,
-                      }
-                    : message,
-                ),
-            );
+            scheduleMessageUpdate(row);
             return;
           }
           queryClient.invalidateQueries({ queryKey: ["messages", projectId] });
@@ -321,6 +341,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       .subscribe();
 
     return () => {
+      if (messageUpdateFrameRef.current !== null) {
+        window.cancelAnimationFrame(messageUpdateFrameRef.current);
+      }
+      flushMessageUpdates();
       void supabase.removeChannel(channel);
     };
   }, [follow, projectId, queryClient]);

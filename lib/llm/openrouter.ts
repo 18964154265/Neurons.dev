@@ -22,7 +22,9 @@ const openRouterConfigurationSchema = z.object({
   appURL: z.url().default("http://localhost:3000"),
 });
 
-export type OpenRouterConfiguration = z.infer<typeof openRouterConfigurationSchema>;
+export type OpenRouterConfiguration = z.infer<
+  typeof openRouterConfigurationSchema
+>;
 
 type ChatCompletionStream = AsyncIterable<ChatCompletionChunk>;
 type ChatCompletionsClient = {
@@ -31,6 +33,23 @@ type ChatCompletionsClient = {
     options?: { signal?: AbortSignal },
   ): Promise<ChatCompletionStream>;
 };
+
+const TEXT_DELTA_MIN_CHARS = 64;
+const TEXT_DELTA_MAX_WAIT_MS = 80;
+const TEXT_DELTA_BOUNDARY_MIN_CHARS = 32;
+
+function shouldEmitTextDelta(
+  textLength: number,
+  latestPart: string,
+  elapsedMs: number,
+) {
+  return (
+    textLength >= TEXT_DELTA_MIN_CHARS ||
+    elapsedMs >= TEXT_DELTA_MAX_WAIT_MS ||
+    (textLength >= TEXT_DELTA_BOUNDARY_MIN_CHARS &&
+      /[\n.!?。！？]\s*$/.test(latestPart))
+  );
+}
 
 function toProviderMessage(message: LLMMessage): ChatCompletionMessageParam {
   if (message.role === "tool") {
@@ -57,7 +76,9 @@ function toProviderMessage(message: LLMMessage): ChatCompletionMessageParam {
   return { role: message.role, content: message.content ?? "" };
 }
 
-function toProviderTools(input: LLMStreamInput): ChatCompletionTool[] | undefined {
+function toProviderTools(
+  input: LLMStreamInput,
+): ChatCompletionTool[] | undefined {
   return input.tools?.map((tool) => ({
     type: "function",
     function: {
@@ -74,7 +95,8 @@ export function readOpenRouterConfiguration(
   return openRouterConfigurationSchema.parse({
     apiKey: environment.OPENROUTER_API_KEY,
     baseURL: environment.OPENROUTER_BASE_URL,
-    defaultModel: environment.OPENROUTER_DEFAULT_MODEL ?? environment.OPENROUTER_MODEL,
+    defaultModel:
+      environment.OPENROUTER_DEFAULT_MODEL ?? environment.OPENROUTER_MODEL,
     appURL: environment.APP_URL,
   });
 }
@@ -86,7 +108,8 @@ export class OpenRouterLLMClient implements LLMClient {
     private readonly configuration: OpenRouterConfiguration,
     completions?: ChatCompletionsClient,
   ) {
-    const validConfiguration = openRouterConfigurationSchema.parse(configuration);
+    const validConfiguration =
+      openRouterConfigurationSchema.parse(configuration);
     this.configuration = validConfiguration;
     this.completions =
       completions ??
@@ -118,14 +141,34 @@ export class OpenRouterLLMClient implements LLMClient {
     );
 
     let finishReason: string | null = null;
+    let textParts: string[] = [];
+    let textLength = 0;
+    let textBufferedAt = 0;
+    const drainText = () => {
+      if (!textLength) return null;
+      const text = textParts.join("");
+      textParts = [];
+      textLength = 0;
+      textBufferedAt = 0;
+      return text;
+    };
     for await (const chunk of providerStream) {
       signal?.throwIfAborted();
       const choice = chunk.choices[0];
       const text = choice?.delta.content;
       if (text) {
-        yield { type: "text_delta", text };
+        if (!textBufferedAt) textBufferedAt = Date.now();
+        textParts.push(text);
+        textLength += text.length;
+        if (
+          shouldEmitTextDelta(textLength, text, Date.now() - textBufferedAt)
+        ) {
+          yield { type: "text_delta", text: drainText()! };
+        }
       }
       for (const toolCall of choice?.delta.tool_calls ?? []) {
+        const pendingText = drainText();
+        if (pendingText) yield { type: "text_delta", text: pendingText };
         yield {
           type: "tool_call_delta",
           toolCall: {
@@ -140,6 +183,8 @@ export class OpenRouterLLMClient implements LLMClient {
         finishReason = choice.finish_reason;
       }
       if (chunk.usage) {
+        const pendingText = drainText();
+        if (pendingText) yield { type: "text_delta", text: pendingText };
         yield {
           type: "usage",
           usage: {
@@ -150,6 +195,8 @@ export class OpenRouterLLMClient implements LLMClient {
         };
       }
     }
+    const pendingText = drainText();
+    if (pendingText) yield { type: "text_delta", text: pendingText };
     yield { type: "completed", finishReason };
   }
 }

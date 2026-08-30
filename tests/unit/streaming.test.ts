@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  STREAM_FLUSH_INTERVAL_MS,
+  STREAM_FLUSH_MAX_INTERVAL_MS,
+  STREAM_FLUSH_MIN_INTERVAL_MS,
   STREAM_FLUSH_MIN_CHARS,
   shouldFlushAssistantStream,
 } from "@/lib/runs/streaming";
@@ -11,7 +12,7 @@ describe("assistant stream batching", () => {
     expect(
       shouldFlushAssistantStream({
         pendingCharacters: STREAM_FLUSH_MIN_CHARS,
-        elapsedMs: 0,
+        elapsedMs: STREAM_FLUSH_MIN_INTERVAL_MS,
       }),
     ).toBe(true);
   });
@@ -20,7 +21,7 @@ describe("assistant stream batching", () => {
     expect(
       shouldFlushAssistantStream({
         pendingCharacters: 1,
-        elapsedMs: STREAM_FLUSH_INTERVAL_MS,
+        elapsedMs: STREAM_FLUSH_MAX_INTERVAL_MS,
       }),
     ).toBe(true);
   });
@@ -28,8 +29,17 @@ describe("assistant stream batching", () => {
   it("batches very small, fast deltas", () => {
     expect(
       shouldFlushAssistantStream({
+        pendingCharacters: STREAM_FLUSH_MIN_CHARS,
+        elapsedMs: STREAM_FLUSH_MIN_INTERVAL_MS - 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not flush a small burst before the maximum interval", () => {
+    expect(
+      shouldFlushAssistantStream({
         pendingCharacters: STREAM_FLUSH_MIN_CHARS - 1,
-        elapsedMs: STREAM_FLUSH_INTERVAL_MS - 1,
+        elapsedMs: STREAM_FLUSH_MAX_INTERVAL_MS - 1,
       }),
     ).toBe(false);
   });

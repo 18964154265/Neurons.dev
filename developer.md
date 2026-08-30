@@ -76,3 +76,10 @@
 - 涉及代码文件：`lib/agents/registry.ts`、`lib/tools/agent-delegation.ts`、`workflows/agent-run.ts`、`workflows/steps.ts`、`lib/runs/worker-store.ts`、`lib/preview/static-preview.ts`、`components/workspace/project-workspace.tsx`、`app/globals.css`、`TRD.md` 及对应单元测试。
 - 关键数据结构或方法：新增 `delegationTargetsByAgent`、`delegate_to_*` Tool、`executeAgentDelegationTool` 与动态执行队列；新增 `buildStaticPreview`，将项目内 HTML 和相对路径 CSS/JavaScript 投影到带严格 CSP 的隔离 iframe；复制按钮改为气泡外侧定位。
 - 上下游影响与依赖：Team Mode 可依照默认职责链动态追加 Agent，并分别记录 `agent.delegated` 与 `agent.handoff` Trace；用户指定调度仍限制在所选 Agent 内，Engineer Mode 运行时移除调度工具。静态 Preview 依赖 `project_files`，不执行构建且不能替代 React、Next.js 或服务端项目所需的 Vercel Sandbox。
+
+### perf(workspace): batch streaming updates
+
+- Commit：`perf(workspace): batch streaming updates`
+- 涉及代码文件：`lib/llm/openrouter.ts`、`lib/agents/engineer-turn.ts`、`workflows/steps.ts`、`lib/runs/streaming.ts`、`lib/runs/worker-store.ts`、`components/workspace/project-workspace.tsx`、`components/chat/markdown-message.tsx`、`app/globals.css`、`TRD.md` 及对应单元测试。
+- 关键数据结构或方法：新增 OpenRouter 文本事件聚合和 Tool Call 数组缓冲；调整 `shouldFlushAssistantStream` 为 250ms 最小间隔、160 字符 burst 阈值及 400ms 最大等待；`updateAssistantStream` 增加相同文本去重；Realtime 消息更新按渲染帧合并，流式阶段使用纯文本和 CSS 光标，完成后再解析 Markdown。
+- 上下游影响与依赖：减少 OpenRouter 碎片事件、Postgres JSONB 更新、Supabase Realtime 广播和前端 Markdown 重算，同时继续以 `messages` 作为可恢复事实来源；Tool Call 仍只在服务端完整聚合，Workflow、Trace、断线补拉和最终消息状态协议保持兼容。

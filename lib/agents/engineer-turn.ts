@@ -17,7 +17,6 @@ export type EngineerDefinition = {
 
 export type EngineerTurnEvent =
   | { type: "text_delta"; text: string }
-  | { type: "tool_call_progress"; toolCall: LLMToolCall }
   | {
       type: "completed";
       text: string;
@@ -32,17 +31,12 @@ export type EngineerTurnInput = {
   onEvent?: (event: EngineerTurnEvent) => void | Promise<void>;
 };
 
-function mergeToolCall(
-  current: LLMToolCall | undefined,
-  delta: LLMToolCall,
-): LLMToolCall {
-  return {
-    index: delta.index,
-    id: delta.id || current?.id || "",
-    name: `${current?.name ?? ""}${delta.name}`,
-    arguments: `${current?.arguments ?? ""}${delta.arguments}`,
-  };
-}
+type ToolCallBuffer = {
+  index: number;
+  id: string;
+  nameParts: string[];
+  argumentParts: string[];
+};
 
 export async function runEngineerTurn(
   client: LLMClient,
@@ -60,9 +54,9 @@ export async function runEngineerTurn(
     );
   }
 
-  let text = "";
+  const textParts: string[] = [];
   let usage: LLMUsage | null = null;
-  const toolCalls = new Map<number, LLMToolCall>();
+  const toolCallBuffers = new Map<number, ToolCallBuffer>();
 
   for await (const event of client.stream(
     {
@@ -77,15 +71,21 @@ export async function runEngineerTurn(
   )) {
     input.signal?.throwIfAborted();
     if (event.type === "text_delta") {
-      text += event.text;
+      textParts.push(event.text);
       await input.onEvent?.(event);
     } else if (event.type === "tool_call_delta") {
-      const merged = mergeToolCall(
-        toolCalls.get(event.toolCall.index),
-        event.toolCall,
-      );
-      toolCalls.set(event.toolCall.index, merged);
-      await input.onEvent?.({ type: "tool_call_progress", toolCall: merged });
+      const buffer = toolCallBuffers.get(event.toolCall.index) ?? {
+        index: event.toolCall.index,
+        id: "",
+        nameParts: [],
+        argumentParts: [],
+      };
+      if (event.toolCall.id) buffer.id = event.toolCall.id;
+      if (event.toolCall.name) buffer.nameParts.push(event.toolCall.name);
+      if (event.toolCall.arguments) {
+        buffer.argumentParts.push(event.toolCall.arguments);
+      }
+      toolCallBuffers.set(event.toolCall.index, buffer);
     } else if (event.type === "usage") {
       usage = event.usage;
     }
@@ -93,10 +93,15 @@ export async function runEngineerTurn(
 
   const completed: EngineerTurnEvent = {
     type: "completed",
-    text,
-    toolCalls: [...toolCalls.values()].sort(
-      (left, right) => left.index - right.index,
-    ),
+    text: textParts.join(""),
+    toolCalls: [...toolCallBuffers.values()]
+      .map((buffer) => ({
+        index: buffer.index,
+        id: buffer.id,
+        name: buffer.nameParts.join(""),
+        arguments: buffer.argumentParts.join(""),
+      }))
+      .sort((left, right) => left.index - right.index),
     usage,
   };
   await input.onEvent?.(completed);

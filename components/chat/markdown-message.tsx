@@ -13,6 +13,13 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   content: string;
   streaming?: boolean;
 }) {
+  if (streaming) {
+    return (
+      <div className="markdown-content markdown-content-streaming">
+        {content}
+      </div>
+    );
+  }
   return (
     <div className="markdown-content">
       <ReactMarkdown
@@ -32,9 +39,6 @@ export const MarkdownMessage = memo(function MarkdownMessage({
       >
         {content}
       </ReactMarkdown>
-      {streaming ? (
-        <span className="streaming-cursor" aria-hidden="true" />
-      ) : null}
     </div>
   );
 });

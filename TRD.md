@@ -680,7 +680,10 @@ none → starting → ready
 ### 11.4 流量控制
 
 - 模型 Token 不逐 token 落库或广播；服务端按时间或字节窗口合并为 Delta。
-- 当前 Assistant Stream 在累计 24 字符或 90ms 时刷新同一条 Message；浏览器对 Realtime `messages UPDATE` 直接更新 Query Cache，不为每个 Delta 再发 REST 请求，1.5 秒轮询只负责断线兜底。
+- OpenRouter Adapter 先将碎片文本聚合为最多约 80ms 或至少 64 字符的模型事件；遇到语义边界、Tool Call、Usage 或 Stream 结束时立即排空，Tool Call 参数只在服务端聚合，不产生 UI 进度事件。
+- Agent Turn 使用分段数组累积文本和 Tool Call 参数，避免为每个 Provider Chunk 重建完整结果。
+- Assistant Message 使用带最小时间门槛的 Burst Flush：距离上次写入至少 250ms，并在累计 160 字符或达到 400ms 最长等待时更新同一条 Message；相同文本不重复写库，完成时写最终文本和终态。
+- 浏览器将同一渲染帧内的 Realtime `messages UPDATE` 合并后更新 Query Cache，不为 Delta 再发 REST 请求；流式阶段以保留换行的纯文本展示，完成后才执行完整 Markdown 解析。1.5 秒轮询只负责断线兜底。
 - Terminal Output 按行数/字节聚合，并设置单事件大小上限。
 - Realtime 事件只携带 UI 必需内容；大详情通过 REST 或签名 Storage URL 获取。
 - Message 完成时写入最终文本，断线恢复不依赖所有 Delta 都存在。

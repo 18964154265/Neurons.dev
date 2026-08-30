@@ -16,16 +16,25 @@ describe("MarkdownMessage", () => {
     expect(container.querySelector("table")).toBeInTheDocument();
   });
 
-  it("does not execute raw HTML and shows a streaming cursor", () => {
+  it("does not execute raw HTML in completed Markdown", () => {
     const { container } = render(
       <MarkdownMessage
         content={'<script data-testid="unsafe">alert(1)</script>\n\n**safe**'}
-        streaming
       />,
     );
 
     expect(screen.queryByTestId("unsafe")).not.toBeInTheDocument();
     expect(screen.getByText("safe")).toBeInTheDocument();
-    expect(container.querySelector(".streaming-cursor")).toBeInTheDocument();
+    expect(container.querySelector("script")).not.toBeInTheDocument();
+  });
+
+  it("uses lightweight plain text while streaming", () => {
+    const { container } = render(
+      <MarkdownMessage content={"**partial**"} streaming />,
+    );
+
+    const stream = container.querySelector(".markdown-content-streaming");
+    expect(stream).toHaveTextContent("**partial**");
+    expect(container.querySelector("strong")).not.toBeInTheDocument();
   });
 });
