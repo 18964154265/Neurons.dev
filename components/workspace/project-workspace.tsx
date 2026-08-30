@@ -135,15 +135,106 @@ function buildFileTreeRows(files: ProjectFile[]): FileTreeRow[] {
 
 const views: Array<{ key: CanvasView; label: string; icon: React.ReactNode }> =
   [
-    { key: "editor", label: "Editor", icon: <Code2 size={15} /> },
-    { key: "terminal", label: "Terminal", icon: <TerminalSquare size={15} /> },
-    { key: "preview", label: "Web Preview", icon: <Eye size={15} /> },
-    { key: "trace", label: "Trace", icon: <ScrollText size={15} /> },
+    { key: "editor", label: "Editor", icon: <Code2 size={16} /> },
+    { key: "terminal", label: "Terminal", icon: <TerminalSquare size={16} /> },
+    { key: "preview", label: "Web Preview", icon: <Eye size={16} /> },
+    { key: "trace", label: "Trace", icon: <ScrollText size={16} /> },
   ];
 
 function messageText(message: ConversationMessage) {
   const value = message.content.text ?? message.content.summary ?? "";
   return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function traceVisual(event: TraceEvent) {
+  const eventType = event.event_type.toLowerCase();
+  if (event.status === "failed" || eventType.includes("error")) {
+    return {
+      kind: "error",
+      icon: <AlertTriangle size={14} aria-hidden="true" />,
+    };
+  }
+  if (event.status === "waiting" || event.status === "approval_required") {
+    return {
+      kind: "warning",
+      icon: <AlertTriangle size={14} aria-hidden="true" />,
+    };
+  }
+  if (eventType === "run.completed") {
+    return {
+      kind: "success",
+      icon: <Check size={14} aria-hidden="true" />,
+    };
+  }
+  if (eventType.startsWith("run.")) {
+    return { kind: "run", icon: <Radio size={14} aria-hidden="true" /> };
+  }
+  if (eventType.startsWith("agent.")) {
+    return { kind: "agent", icon: <Bot size={14} aria-hidden="true" /> };
+  }
+  if (eventType.startsWith("tool.")) {
+    return { kind: "tool", icon: <Braces size={14} aria-hidden="true" /> };
+  }
+  if (eventType.startsWith("coding.")) {
+    return { kind: "code", icon: <Code2 size={14} aria-hidden="true" /> };
+  }
+  if (eventType.startsWith("file.")) {
+    return {
+      kind: "file",
+      icon: <FileCode2 size={14} aria-hidden="true" />,
+    };
+  }
+  return { kind: "default", icon: <Braces size={14} aria-hidden="true" /> };
+}
+
+function traceDuration(event: TraceEvent) {
+  const value = event.detail.durationMs ?? event.detail.duration_ms;
+  if (typeof value !== "number") return null;
+  return value >= 1000 ? `${(value / 1000).toFixed(1)} s` : `${value} ms`;
+}
+
+function traceTime(value: string) {
+  return new Date(value).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function traceStatusLabel(status: string) {
+  return (
+    {
+      started: "Started",
+      progress: "In progress",
+      completed: "Completed",
+      failed: "Failed",
+      cancelled: "Cancelled",
+      waiting: "Waiting",
+      approval_required: "Approval required",
+    }[status] ?? status
+  );
+}
+
+function traceAgentName(event: TraceEvent, agents: AgentInfo[]) {
+  if (!event.agent_key) return "System";
+  return (
+    agents.find((agent) => agent.key === event.agent_key)?.name ??
+    event.agent_key
+  );
+}
+
+function traceMetadata(event: TraceEvent) {
+  const metadata = event.detail.metadata;
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : null;
+}
+
+function tracePayload(event: TraceEvent) {
+  const payload = Object.fromEntries(
+    Object.entries(event.detail).filter(([key]) => key !== "metadata"),
+  );
+  return Object.keys(payload).length ? payload : null;
 }
 
 export function ProjectWorkspace({ projectId }: { projectId: string }) {
@@ -163,6 +254,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [copiedTraceAction, setCopiedTraceAction] = useState<string | null>(
+    null,
+  );
   const [previewRefreshToken, setPreviewRefreshToken] = useState(0);
   const pendingMessageUpdatesRef = useRef(
     new Map<string, Record<string, unknown>>(),
@@ -515,6 +609,40 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     );
   }
 
+  async function copyTrace(event: TraceEvent, target: "event" | "json") {
+    const value =
+      target === "event"
+        ? JSON.stringify(
+            {
+              id: event.id,
+              sequence: event.sequence,
+              eventType: event.event_type,
+              status: event.status,
+              summary: event.summary,
+              agentKey: event.agent_key,
+              createdAt: event.created_at,
+              detail: event.detail,
+            },
+            null,
+            2,
+          )
+        : JSON.stringify(tracePayload(event) ?? {}, null, 2);
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      return;
+    }
+    const actionId = `${event.id}:${target}`;
+    setCopiedTraceAction(actionId);
+    window.setTimeout(
+      () =>
+        setCopiedTraceAction((current) =>
+          current === actionId ? null : current,
+        ),
+      1500,
+    );
+  }
+
   return (
     <main className="workspace-shell">
       <section className="chat-pane">
@@ -779,16 +907,16 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         <header className="canvas-globalbar">
           <div className="project-actions">
             <button className="top-action">
-              <GitBranch size={15} /> 项目
+              <GitBranch size={16} /> 项目
             </button>
             <button className="top-action">
-              <Radio size={15} /> 版本
+              <Radio size={16} /> 版本
             </button>
             <button
               className="publish-button"
               disabled={!project.latestSuccessfulVersionId}
             >
-              <Rocket size={15} /> Publish
+              <Rocket size={16} /> Publish
             </button>
           </div>
         </header>
@@ -1001,19 +1129,34 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 (eventsQuery.isFetching && !eventsQuery.data?.length) ? (
                   <p className="muted">加载中…</p>
                 ) : null}
-                {(eventsQuery.data ?? []).map((event) => (
-                  <button
-                    key={event.id}
-                    className={selectedTrace?.id === event.id ? "active" : ""}
-                    onClick={() => setSelectedTraceId(event.id)}
-                  >
-                    <span>#{event.sequence}</span>
-                    <div>
-                      <strong>{event.event_type}</strong>
-                      <small>{event.summary || event.status}</small>
-                    </div>
-                  </button>
-                ))}
+                {(eventsQuery.data ?? []).map((event) => {
+                  const visual = traceVisual(event);
+                  const duration = traceDuration(event);
+                  return (
+                    <button
+                      key={event.id}
+                      className={`trace-event-row trace-event-${visual.kind} ${
+                        selectedTrace?.id === event.id ? "active" : ""
+                      }`}
+                      onClick={() => setSelectedTraceId(event.id)}
+                    >
+                      <span className="trace-event-node">{visual.icon}</span>
+                      <div className="trace-event-content">
+                        <div className="trace-event-heading">
+                          <strong>{event.event_type}</strong>
+                          <small>{traceTime(event.created_at)}</small>
+                        </div>
+                        <span className="trace-event-summary">
+                          {event.summary || event.status}
+                        </span>
+                        <small className="trace-event-meta">
+                          #{event.sequence}
+                          {duration ? ` · ${duration}` : ""}
+                        </small>
+                      </div>
+                    </button>
+                  );
+                })}
                 {!eventsQuery.isFetching &&
                 !eventsQuery.isError &&
                 eventsQuery.data?.length === 0 ? (
@@ -1033,12 +1176,134 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               </aside>
               <article className="trace-detail">
                 {selectedTrace ? (
-                  <>
-                    <p className="eyebrow">EVENT #{selectedTrace.sequence}</p>
-                    <h2>{selectedTrace.event_type}</h2>
-                    <p>{selectedTrace.summary}</p>
-                    <pre>{JSON.stringify(selectedTrace.detail, null, 2)}</pre>
-                  </>
+                  (() => {
+                    const visual = traceVisual(selectedTrace);
+                    const payload = tracePayload(selectedTrace);
+                    const metadata = traceMetadata(selectedTrace);
+                    const duration = traceDuration(selectedTrace);
+                    const actionEventId = `${selectedTrace.id}:event`;
+                    const actionJsonId = `${selectedTrace.id}:json`;
+                    return (
+                      <div className="trace-inspector">
+                        <header className="trace-detail-header">
+                          <div className="trace-detail-heading">
+                            <p className="trace-section-kicker">
+                              EVENT #{selectedTrace.sequence}
+                            </p>
+                            <div className="trace-detail-title-row">
+                              <h2>{selectedTrace.event_type}</h2>
+                              <span
+                                className={`trace-status-badge trace-status-${visual.kind}`}
+                              >
+                                {traceStatusLabel(selectedTrace.status)}
+                              </span>
+                            </div>
+                            <p className="trace-detail-id">
+                              {selectedTrace.id}
+                            </p>
+                          </div>
+                          <div className="trace-detail-actions">
+                            <button
+                              className="trace-copy-button"
+                              type="button"
+                              onClick={() =>
+                                void copyTrace(selectedTrace, "event")
+                              }
+                              title="复制事件"
+                            >
+                              {copiedTraceAction === actionEventId ? (
+                                <Check size={13} />
+                              ) : (
+                                <Copy size={13} />
+                              )}
+                              <span>Copy event</span>
+                            </button>
+                            <button
+                              className="trace-copy-button"
+                              type="button"
+                              onClick={() =>
+                                void copyTrace(selectedTrace, "json")
+                              }
+                              title="复制 JSON"
+                            >
+                              {copiedTraceAction === actionJsonId ? (
+                                <Check size={13} />
+                              ) : (
+                                <Copy size={13} />
+                              )}
+                              <span>Copy JSON</span>
+                            </button>
+                          </div>
+                        </header>
+
+                        <p className="trace-detail-summary">
+                          {selectedTrace.summary || "No summary provided."}
+                        </p>
+
+                        <section className="trace-inspector-section">
+                          <h3>Overview</h3>
+                          <dl className="trace-overview-grid">
+                            <div>
+                              <dt>Agent</dt>
+                              <dd>
+                                {traceAgentName(
+                                  selectedTrace,
+                                  agentsQuery.data ?? [],
+                                )}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Status</dt>
+                              <dd>{traceStatusLabel(selectedTrace.status)}</dd>
+                            </div>
+                            <div>
+                              <dt>Duration</dt>
+                              <dd>{duration ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt>Timestamp</dt>
+                              <dd>{traceTime(selectedTrace.created_at)}</dd>
+                            </div>
+                          </dl>
+                        </section>
+
+                        <section className="trace-inspector-section">
+                          <div className="trace-section-heading">
+                            <h3>Payload</h3>
+                            <button
+                              className="trace-inline-action"
+                              type="button"
+                              onClick={() =>
+                                void copyTrace(selectedTrace, "json")
+                              }
+                            >
+                              {copiedTraceAction === actionJsonId
+                                ? "Copied"
+                                : "Copy JSON"}
+                            </button>
+                          </div>
+                          {payload ? (
+                            <pre className="trace-json-viewer">
+                              {JSON.stringify(payload, null, 2)}
+                            </pre>
+                          ) : (
+                            <p className="trace-empty-inline">
+                              No payload for this event.
+                            </p>
+                          )}
+                        </section>
+
+                        {metadata ? (
+                          <section className="trace-inspector-section">
+                            <h3>Metadata</h3>
+                            <pre className="trace-json-viewer">
+                              {JSON.stringify(metadata, null, 2)}
+                            </pre>
+                          </section>
+                        ) : null}
+                      </div>
+                    );
+                  })()
                 ) : (
                   <div className="canvas-empty">
                     <ScrollText size={28} />

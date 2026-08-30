@@ -83,3 +83,10 @@
 - 涉及代码文件：`lib/llm/openrouter.ts`、`lib/agents/engineer-turn.ts`、`workflows/steps.ts`、`lib/runs/streaming.ts`、`lib/runs/worker-store.ts`、`components/workspace/project-workspace.tsx`、`components/chat/markdown-message.tsx`、`app/globals.css`、`TRD.md` 及对应单元测试。
 - 关键数据结构或方法：新增 OpenRouter 文本事件聚合和 Tool Call 数组缓冲；调整 `shouldFlushAssistantStream` 为 250ms 最小间隔、160 字符 burst 阈值及 400ms 最大等待；`updateAssistantStream` 增加相同文本去重；Realtime 消息更新按渲染帧合并，流式阶段使用纯文本和 CSS 光标，完成后再解析 Markdown。
 - 上下游影响与依赖：减少 OpenRouter 碎片事件、Postgres JSONB 更新、Supabase Realtime 广播和前端 Markdown 重算，同时继续以 `messages` 作为可恢复事实来源；Tool Call 仍只在服务端完整聚合，Workflow、Trace、断线补拉和最终消息状态协议保持兼容。
+
+### polish(ui): de-ai visual consistency
+
+- Commit：待提交
+- 涉及代码文件：`app/globals.css`；Workspace 顶部导航的图标尺寸调整位于 `components/workspace/project-workspace.tsx`。
+- 关键数据结构或方法：无；统一 UI token、控件高度、圆角、muted 文本对比度、滚动条占位及面板间距，弱化渐变、阴影、紫色装饰和卡片浮动效果。
+- 上下游影响与依赖：仅影响 Dashboard、Auth、Workspace、Chat 与 Trace 的视觉呈现和键盘/滚动体验，不改变业务逻辑、API、数据结构或运行时依赖；继续复用现有浅色 semantic token，并保留弹窗/下拉层级所需的阴影。
