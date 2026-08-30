@@ -37,6 +37,7 @@ import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { shouldSubmitTextareaOnEnter } from "@/lib/forms/submit-on-enter";
 import type { ConversationMessage } from "@/lib/chat/repository";
 import type { ProjectSummary } from "@/lib/projects/types";
+import { buildStaticPreview } from "@/lib/preview/static-preview";
 import type { AgentRun } from "@/lib/runs/repository";
 import { runFailureMessage } from "@/lib/runs/failure";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -162,6 +163,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [previewRefreshToken, setPreviewRefreshToken] = useState(0);
 
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
@@ -412,6 +414,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     () => buildFileTreeRows(filesQuery.data ?? []),
     [filesQuery.data],
   );
+  const staticPreview = useMemo(
+    () => buildStaticPreview(filesQuery.data ?? []),
+    [filesQuery.data],
+  );
 
   if (projectQuery.isLoading) {
     return (
@@ -556,26 +562,41 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             </div>
           ) : null}
           {(messagesQuery.data ?? []).map((message) => (
-            <article
+            <div
               key={message.id}
-              className={`chat-message ${message.role} ${message.kind}`}
+              className={`chat-message-wrap ${message.role} ${message.kind}`}
             >
-              <div className="message-meta">
-                <span>
-                  {message.role === "user"
-                    ? "You"
-                    : ((agentsQuery.data ?? []).find(
-                        (agent) => agent.key === message.agentKey,
-                      )?.name ??
-                      message.agentKey ??
-                      "Neurons")}
-                </span>
-                <small>#{message.sequence}</small>
-              </div>
-              <MarkdownMessage
-                content={messageText(message)}
-                streaming={message.status === "streaming"}
-              />
+              <article
+                className={`chat-message ${message.role} ${message.kind}`}
+              >
+                <div className="message-meta">
+                  <span>
+                    {message.role === "user"
+                      ? "You"
+                      : ((agentsQuery.data ?? []).find(
+                          (agent) => agent.key === message.agentKey,
+                        )?.name ??
+                        message.agentKey ??
+                        "Neurons")}
+                  </span>
+                  <small>#{message.sequence}</small>
+                </div>
+                <MarkdownMessage
+                  content={messageText(message)}
+                  streaming={message.status === "streaming"}
+                />
+                {message.role === "assistant" && message.runId ? (
+                  <button
+                    className="trace-link"
+                    onClick={() => openTrace(message)}
+                  >
+                    <Braces size={14} />
+                    {["thought_summary", "tool_summary"].includes(message.kind)
+                      ? "在 Trace 中查看"
+                      : "查看本轮 Trace"}
+                  </button>
+                ) : null}
+              </article>
               <button
                 className="message-copy-button"
                 type="button"
@@ -589,18 +610,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   <Copy size={13} />
                 )}
               </button>
-              {message.role === "assistant" && message.runId ? (
-                <button
-                  className="trace-link"
-                  onClick={() => openTrace(message)}
-                >
-                  <Braces size={14} />
-                  {["thought_summary", "tool_summary"].includes(message.kind)
-                    ? "在 Trace 中查看"
-                    : "查看本轮 Trace"}
-                </button>
-              ) : null}
-            </article>
+            </div>
           ))}
           {runIsActive ? (
             <div className="running-card">
@@ -901,16 +911,42 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           {view === "preview" ? (
             <div className="preview-surface">
               <div className="preview-addressbar">
-                <button aria-label="刷新预览" disabled>
+                <button
+                  aria-label="刷新预览"
+                  disabled={!staticPreview}
+                  onClick={() => setPreviewRefreshToken((value) => value + 1)}
+                >
                   <RefreshCw size={14} />
                 </button>
-                <span>Preview unavailable</span>
+                <span>
+                  {staticPreview
+                    ? `preview://${staticPreview.entryPath}`
+                    : "Preview unavailable"}
+                </span>
               </div>
-              <div className="canvas-empty">
-                <Eye size={28} />
-                <strong>还没有可用预览</strong>
-                <p>成功启动 Sandbox 开发服务器后，结果会在隔离页面中显示。</p>
-              </div>
+              {staticPreview ? (
+                <iframe
+                  key={`${staticPreview.entryPath}:${previewRefreshToken}:${(
+                    filesQuery.data ?? []
+                  )
+                    .map((file) => file.revision)
+                    .join(".")}`}
+                  className="static-preview-frame"
+                  title="项目 Web Preview"
+                  sandbox="allow-scripts"
+                  referrerPolicy="no-referrer"
+                  srcDoc={staticPreview.srcDoc}
+                />
+              ) : (
+                <div className="canvas-empty">
+                  <Eye size={28} />
+                  <strong>还没有可用静态预览</strong>
+                  <p>
+                    让 Alex 通过 coding 生成 index.html；本地 CSS 和 JavaScript
+                    会在隔离 iframe 中加载。
+                  </p>
+                </div>
+              )}
             </div>
           ) : null}
           {view === "trace" ? (

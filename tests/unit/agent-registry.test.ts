@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentDefinitions,
+  delegationTargetsByAgent,
   defaultScheduleRules,
   ENGINEER_AGENT_KEY,
+  resolveAgentDefinitionForMode,
   resolveEngineerDefinition,
   TEAM_LEAD_AGENT_KEY,
   USER_SELECTED_SCHEDULE_IS_STRICT,
@@ -26,6 +28,14 @@ describe("agent registry", () => {
     expect(TEAM_LEAD_AGENT_KEY).toBe("mike");
     expect(resolveEngineerDefinition().key).toBe("alex");
     expect(USER_SELECTED_SCHEDULE_IS_STRICT).toBe(true);
+    expect(
+      resolveAgentDefinitionForMode("alex", "engineer").tools.map(
+        (tool) => tool.name,
+      ),
+    ).toEqual(["workspace_list_files", "workspace_read_file", "coding"]);
+    expect(
+      resolveAgentDefinitionForMode("alex", "engineer").instructions,
+    ).not.toContain("delegate_to_david");
   });
 
   it("preserves confirmed scheduling order and safe tool separation", () => {
@@ -45,14 +55,24 @@ describe("agent registry", () => {
       "workspace_list_files",
       "workspace_read_file",
       "coding",
+      "delegate_to_david",
     ]);
     expect(resolveEngineerDefinition().instructions).toContain(
       "必须显式调用 coding 工具",
     );
-    expect(
-      agentDefinitions
-        .filter((definition) => definition.key !== "alex")
-        .every((definition) => definition.tools.length === 0),
-    ).toBe(true);
+    expect(delegationTargetsByAgent).toEqual({
+      mike: ["emma", "bob", "alex", "david"],
+      emma: ["bob", "alex"],
+      bob: ["alex"],
+      alex: ["david"],
+      david: ["alex"],
+    });
+    for (const definition of agentDefinitions) {
+      expect(
+        definition.tools
+          .filter((tool) => tool.name.startsWith("delegate_to_"))
+          .map((tool) => tool.name.slice("delegate_to_".length)),
+      ).toEqual(delegationTargetsByAgent[definition.key]);
+    }
   });
 });

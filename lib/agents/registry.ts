@@ -37,6 +37,7 @@ function instructionsFor(
         "2. coding.files 中必须列出完整相对路径和完整文件内容；多个路径会形成文件夹树并同步到 Editor",
         "3. 写入前可使用 workspace_list_files 和 workspace_read_file 获取当前项目状态，避免无依据覆盖",
         "4. coding 完成后只汇报真实写入结果和未验证项，不得声称已运行尚未接入的 Terminal、Preview 或测试工具",
+        "5. 用户需要 Web Preview 且任务适合静态网页时，生成 index.html，并使用本地相对路径引用 CSS 和 JavaScript；静态 Preview 不等同于已运行 React、Next.js 或后端服务",
       ].join("\n"),
     );
   }
@@ -74,14 +75,55 @@ function defineAgent(
   },
 ): AgentDefinition {
   const { tools = [], ...metadata } = definition;
+  const delegationTools = tools.filter((tool) =>
+    tool.name.startsWith("delegate_to_"),
+  );
   return {
     ...metadata,
-    instructions: instructionsFor(metadata),
+    instructions: `${instructionsFor(metadata)}${
+      delegationTools.length
+        ? `\n需要把明确子任务交给其他 Agent 时，必须调用对应的 Agent Tool：${delegationTools
+            .map((tool) => tool.name)
+            .join("、")}；不得只用文字声称已经完成调度。`
+        : ""
+    }`,
     // Displayed capabilities never grant executable tool permissions. The tool
     // registry injects concrete, policy-checked tools into a run separately.
     tools,
   };
 }
+
+function delegationTool(target: AgentKey, description: string) {
+  return {
+    name: `delegate_to_${target}`,
+    description,
+    parameters: {
+      type: "object",
+      properties: {
+        task: { type: "string", minLength: 1, maxLength: 4_000 },
+        reason: { type: "string", minLength: 1, maxLength: 1_000 },
+      },
+      required: ["task", "reason"],
+      additionalProperties: false,
+    },
+  } satisfies AgentDefinition["tools"][number];
+}
+
+export const delegationTargetsByAgent = {
+  mike: ["emma", "bob", "alex", "david"],
+  emma: ["bob", "alex"],
+  bob: ["alex"],
+  alex: ["david"],
+  david: ["alex"],
+} as const satisfies Record<AgentKey, readonly AgentKey[]>;
+
+const delegationToolsFor = (agentKey: AgentKey) =>
+  delegationTargetsByAgent[agentKey].map((target) =>
+    delegationTool(
+      target,
+      `将一个边界明确的子任务交给 ${target}。用户指定调度时，只允许交给本轮已选择的 Agent。`,
+    ),
+  );
 
 const alexWorkspaceTools: AgentDefinition["tools"] = [
   {
@@ -175,6 +217,7 @@ export const agentDefinitions: readonly AgentDefinition[] = [
       "结果汇总",
       "请求关键决策",
     ],
+    tools: delegationToolsFor("mike"),
   }),
   defineAgent({
     key: "emma",
@@ -217,6 +260,7 @@ export const agentDefinitions: readonly AgentDefinition[] = [
       "Preview 页面观察",
       "产品与 UX 分析",
     ],
+    tools: delegationToolsFor("emma"),
   }),
   defineAgent({
     key: "bob",
@@ -261,6 +305,7 @@ export const agentDefinitions: readonly AgentDefinition[] = [
       "技术文档检索",
       "架构风险分析",
     ],
+    tools: delegationToolsFor("bob"),
   }),
   defineAgent({
     key: "alex",
@@ -302,7 +347,7 @@ export const agentDefinitions: readonly AgentDefinition[] = [
       "测试与构建",
       "部署准备",
     ],
-    tools: alexWorkspaceTools,
+    tools: [...alexWorkspaceTools, ...delegationToolsFor("alex")],
   }),
   defineAgent({
     key: "david",
@@ -349,6 +394,7 @@ export const agentDefinitions: readonly AgentDefinition[] = [
       "Trace 和日志分析",
       "Preview 交互验收",
     ],
+    tools: delegationToolsFor("david"),
   }),
 ];
 
@@ -373,6 +419,21 @@ export function resolveAgentDefinition(key: AgentKey): AgentDefinition {
   const definition = definitionsByKey.get(key);
   if (!definition) throw new Error(`AGENT_DEFINITION_NOT_FOUND:${key}`);
   return definition;
+}
+
+export function resolveAgentDefinitionForMode(
+  key: AgentKey,
+  mode: "engineer" | "team",
+): AgentDefinition {
+  const definition = resolveAgentDefinition(key);
+  if (mode === "team") return definition;
+  return {
+    ...definition,
+    instructions: instructionsFor(definition),
+    tools: definition.tools.filter(
+      (tool) => !tool.name.startsWith("delegate_to_"),
+    ),
+  };
 }
 
 export function resolveEngineerDefinition(): EngineerDefinition {

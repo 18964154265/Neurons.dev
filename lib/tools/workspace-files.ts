@@ -19,6 +19,7 @@ export type WorkspaceToolResult = {
   toolCallId: string;
   content: string;
   filePath: string | null;
+  delegatedAgentKey: null;
 };
 
 function effectKey(runId: string, call: LLMToolCall) {
@@ -239,5 +240,6 @@ export async function executeWorkspaceToolCall(
     toolCallId: call.id,
     content: JSON.stringify(operation.output),
     filePath: operation.filePaths[0] ?? null,
+    delegatedAgentKey: null,
   };
 }

@@ -20,14 +20,21 @@ export async function agentRunWorkflow(runId: string) {
       text: string;
     }> = [];
     let previousAgentKey: (typeof run.agentKeys)[number] | null = null;
-    for (const agentKey of run.agentKeys) {
+    const executionQueue = [...run.agentKeys];
+    for (let index = 0; index < executionQueue.length; index += 1) {
+      const agentKey = executionQueue[index]!;
       const turn = await beginAgentTurnStep(run, agentKey, previousAgentKey);
       const output = await runAgentModelStep(turn, outputs);
       await completeAgentTurnStep(turn, output);
       outputs.push({ agentKey, text: output.text });
+      for (const delegatedAgentKey of output.delegatedAgentKeys) {
+        if (!executionQueue.includes(delegatedAgentKey)) {
+          executionQueue.push(delegatedAgentKey);
+        }
+      }
       previousAgentKey = agentKey;
     }
-    await completeRunStep(run);
+    await completeRunStep({ ...run, agentKeys: executionQueue });
     return { runId, status: "completed" as const };
   } catch (error) {
     const modelFailure = extractModelFailure(error);

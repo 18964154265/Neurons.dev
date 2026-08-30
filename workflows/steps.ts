@@ -47,20 +47,22 @@ export async function runAgentModelStep(
 ) {
   "use step";
   const [
-    { resolveAgentDefinition },
+    { resolveAgentDefinition, resolveAgentDefinitionForMode },
     { runEngineerTurn },
     { createOpenRouterLLMClient },
+    delegation,
     { executeWorkspaceToolCall },
     store,
   ] = await Promise.all([
     import("@/lib/agents/registry"),
     import("@/lib/agents/engineer-turn"),
     import("@/lib/llm/openrouter"),
+    import("@/lib/tools/agent-delegation"),
     import("@/lib/tools/workspace-files"),
     import("@/lib/runs/worker-store"),
   ]);
 
-  const agent = resolveAgentDefinition(turn.agentKey);
+  const agent = resolveAgentDefinitionForMode(turn.agentKey, turn.mode);
   const client = createOpenRouterLLMClient();
   const handoffContext = previousOutputs.length
     ? `\n\n团队前序交接（只作为已完成工作的上下文）：\n${previousOutputs
@@ -77,6 +79,7 @@ export async function runAgentModelStep(
   const totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let hasUsage = false;
   let completedText = "";
+  const delegatedAgentKeys = new Set<AgentKey>();
 
   for (let toolTurn = 0; toolTurn < 8; toolTurn += 1) {
     let result: Awaited<ReturnType<typeof runEngineerTurn>> | null = null;
@@ -142,6 +145,7 @@ export async function runAgentModelStep(
         text: completedText,
         toolCalls: allToolCalls,
         usage: hasUsage ? totalUsage : null,
+        delegatedAgentKeys: [...delegatedAgentKeys],
       };
     }
 
@@ -151,7 +155,12 @@ export async function runAgentModelStep(
       toolCalls: result.toolCalls,
     });
     for (const call of result.toolCalls) {
-      const toolResult = await executeWorkspaceToolCall(turn, call);
+      const toolResult = delegation.isAgentDelegationTool(call.name)
+        ? await delegation.executeAgentDelegationTool(turn, call)
+        : await executeWorkspaceToolCall(turn, call);
+      if (toolResult.delegatedAgentKey) {
+        delegatedAgentKeys.add(toolResult.delegatedAgentKey);
+      }
       conversation.push({
         role: "tool",
         content: toolResult.content,

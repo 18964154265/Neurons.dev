@@ -17,6 +17,7 @@ export type PreparedAgentRun = {
   ownerId: string;
   prompt: string;
   mode: "engineer" | "team";
+  scheduleStrategy: "automatic" | "user_selected";
   agentKeys: AgentKey[];
 };
 
@@ -47,12 +48,13 @@ export async function prepareAgentRun(
         conversation_id: string;
         owner_id: string;
         mode: "engineer" | "team";
+        schedule_strategy: "automatic" | "user_selected";
         status: string;
         prompt: string;
       }>
     >`
       select run.id, run.project_id, run.conversation_id, run.owner_id,
-             run.mode::text, run.status::text,
+             run.mode::text, run.schedule_strategy::text, run.status::text,
              coalesce(run_message.content ->> 'text', '') as prompt
       from public.agent_runs run
       join public.messages run_message on run_message.id = run.trigger_message_id
@@ -139,6 +141,7 @@ export async function prepareAgentRun(
       ownerId: run.owner_id,
       prompt: run.prompt,
       mode: run.mode,
+      scheduleStrategy: run.schedule_strategy,
       agentKeys: selectedAgents,
     };
   });

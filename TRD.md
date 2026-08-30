@@ -565,6 +565,11 @@ none → starting → ready
              └→ failed（继续指向 latest successful preview）
 ```
 
+当前提供两级 Preview：
+
+1. 静态 Preview（已接入）：浏览器从 `project_files` 选取 `index.html`（其次为 `public/index.html`、`src/index.html` 或首个 HTML），内联项目内相对路径 CSS/JavaScript，并以 `srcDoc` 写入无同源权限的 sandbox iframe。严格 CSP 禁止网络连接、表单提交、外部资源和宿主页面访问；文件 revision 变化后自动刷新，也可由用户手动刷新。
+2. Sandbox Preview（待接入）：React、Next.js、服务端路由、依赖安装等需要真实运行时的项目必须在 Vercel Sandbox 内启动开发服务器，再通过受控 Preview URL 展示。静态 Preview 不得冒充该能力。
+
 ## 10. API 设计
 
 ### 10.1 通用协议
@@ -778,7 +783,7 @@ type AgentDefinition = {
 - `toolLabels` 是安全的 UI 展示文案，不代表工具已经可以执行。
 - `tools` 才是发送给模型的可执行 Tool Allowlist；调用还必须通过服务端 Tool Executor 的名称、Schema、项目范围和副作用检查。
 - 五个 Agent 当前均使用定义版本 `1`，未设置 Agent 级 `model`，因此统一继承 `OPENROUTER_DEFAULT_MODEL`。
-- 当前持久 Workflow 同时支持 Engineer Mode 与 Team Mode。Engineer Mode 固定执行 Alex；Team Mode 将本轮已分配 Agent 按注册表稳定顺序串行执行，每次只有一个 Assignment 为 `active`，每次切换写入 `agent.handoff` Trace。
+- 当前持久 Workflow 同时支持 Engineer Mode 与 Team Mode。Engineer Mode 固定执行 Alex，并在运行时移除全部 Agent 调度工具；Team Mode 从初始队列开始，按 Tool Call 动态追加被调度 Agent，每次只有一个 Assignment 为 `active`，每次切换写入 `agent.handoff` Trace。
 - 当前 Tool Loop 最多 8 个模型回合；每次模型调用只对明确的瞬时 Provider 错误重试 3 次。单个 Workspace 文本文件最大 256 KiB，路径必须是项目根目录下的规范相对路径。
 
 #### 13.1.2 Mike — Team Lead（`mike@1`）
@@ -790,7 +795,7 @@ type AgentDefinition = {
 - 行为边界：默认不写业务代码；不和专业 Agent 重复执行；不创建新 Agent；严格尊重用户指定 Agent；并行任务不得发生文件写冲突。
 - 固定交接：需求不清楚 → Emma；架构或数据库 → Bob；功能或 Bug → Alex；测试、数据验证或验收 → David。
 - 展示工具标签：项目上下文读取、Agent 分配和取消、工作流状态管理、结果汇总、请求关键决策。
-- 当前可执行工具：无；Mike 可作为 Team Workflow 中的模型执行节点和交接节点，但动态增删 Agent 的编排 Tool 尚未接入。
+- 当前可执行工具：`delegate_to_emma`、`delegate_to_bob`、`delegate_to_alex`、`delegate_to_david`。每次成功调度都会更新项目 Agent Assignment、Run Agent State 和计划快照，并写入 `agent.delegated` Trace；Mike 不直接承担专业 Agent 的业务工作。
 
 #### 13.1.3 Emma — Product & Research（`emma@1`）
 
@@ -800,7 +805,7 @@ type AgentDefinition = {
 - 输出重点：用户目标、功能范围、用户流程、验收标准、待确认问题、给 Bob 或 Alex 的交接摘要。
 - 行为边界：不决定底层架构；默认不改业务代码；不把未验证研究结论当事实；不擅自扩大范围。
 - 展示工具标签：Web Research、项目文档读取、PRD 和用户故事、Preview 页面观察、产品与 UX 分析。
-- 当前可执行工具：无；Research、文档与 Preview Tool 尚未接入。
+- 当前可执行工具：`delegate_to_bob`、`delegate_to_alex`，分别用于把技术架构任务和功能实现任务继续交接。Research、文档读取和 Preview 观察 Tool 尚未接入。
 
 #### 13.1.4 Bob — System Architect（`bob@1`）
 
@@ -810,7 +815,7 @@ type AgentDefinition = {
 - 输出重点：技术决策、模块边界、数据结构、API/事件契约、安全要求、实现顺序。
 - 行为边界：不过度设计；默认不承担大量业务实现；不绕过安全或审批；决策必须追溯到需求。
 - 展示工具标签：代码库与依赖分析、数据库 Schema 设计、API 与事件协议设计、Auth/RLS 检查、技术文档检索、架构风险分析。
-- 当前可执行工具：无；只读 Repository、Schema 和技术检索 Tool 尚未接入。
+- 当前可执行工具：`delegate_to_alex`，用于把已明确的技术方案交给实现负责人。只读 Repository、Schema 和技术检索 Tool 尚未接入。
 
 #### 13.1.5 Alex — Full-stack Engineer（`alex@1`）
 
@@ -820,8 +825,8 @@ type AgentDefinition = {
 - 输出重点：实现结果、文件变更、验证证据、风险、未完成项。
 - 行为边界：默认是生产代码唯一主要写入者；不输出密钥；不伪造验证；危险操作、生产迁移和 Publish 需审批；遇到需求/架构矛盾时暂停；Engineer Mode 不隐式调用其他 Agent。
 - 展示工具标签：文件读写、Terminal、浏览器与 Web Preview、前后端开发、Supabase、测试与构建、部署准备。
-- 当前可执行工具：`workspace_list_files`、`workspace_read_file`、`coding`。`coding` 一次最多原子写入 40 个文本文件，先发送 `coding.started` 跟随信号，再生成每个文件的 `file.saved` Trace；相对路径自动投影为 Editor 文件夹树。
-- 尚未接入：Sandbox 文件系统同步、Patch/Diff、Terminal、Preview、Validation、Supabase 管理、部署与 Publish Tool。因此 Alex 不能声称已经运行、构建、预览或部署仅写入 Editor 的文件。
+- 当前可执行工具：`workspace_list_files`、`workspace_read_file`、`coding`、`delegate_to_david`。`coding` 一次最多原子写入 40 个文本文件，先发送 `coding.started` 跟随信号，再生成每个文件的 `file.saved` Trace；相对路径自动投影为 Editor 文件夹树。Team Mode 中 Alex 可把验证任务交给 David；Engineer Mode 会移除该调度 Tool。
+- Web Preview 已接入静态 `index.html` 渲染，但不是模型 Tool，也不代表执行了构建。尚未接入：Sandbox 文件系统同步、Patch/Diff、Terminal、动态应用 Preview、Validation、Supabase 管理、部署与 Publish Tool。因此 Alex 不能声称已经运行、构建或部署仅写入 Editor 的文件。
 
 #### 13.1.6 David — Quality & Data Engineer（`david@1`）
 
@@ -831,7 +836,7 @@ type AgentDefinition = {
 - 输出重点：验证范围、通过项、失败项、复现步骤、证据、风险和发布建议。
 - 行为边界：不把页面打开当作完成；不改生产数据；默认不重写业务实现；只有明确分配时补测试代码；无法验证必须标记。
 - 展示工具标签：Playwright、单元与集成测试、类型检查和构建、数据库只读检查、Trace/日志分析、Preview 验收。
-- 当前可执行工具：无；Validation、数据库只读、Trace 和 Preview Tool 尚未接入。
+- 当前可执行工具：`delegate_to_alex`，用于把发现的可复现业务缺陷交回主要写入者。Validation、数据库只读、Trace 和 Preview 验收 Tool 尚未接入。
 
 ### 13.2 Engineer Mode
 
@@ -844,14 +849,27 @@ type AgentDefinition = {
 
 Team Mode 分为：
 
-1. 自动调度：当前 P0 固定选择 Mike；基于任务分类动态生成 DAG 仍是后续能力。
+1. 自动调度：初始只运行 Mike。Mike 根据请求调用 Agent Tool；后续 Agent 还可依照默认交接链继续调度，Workflow 将目标去重后动态追加到串行执行队列。动态并行 DAG 仍是后续能力。
 2. 用户指定：严格只执行请求中的 Agent Keys，不静默增加 Agent；执行顺序使用注册表稳定顺序 `Mike → Emma → Bob → Alex → David` 的所选子集。
+
+可执行调度关系与默认职责链保持一致：
+
+| 当前 Agent | 可调度 Agent           | 用途                                   |
+| ---------- | ---------------------- | -------------------------------------- |
+| Mike       | Emma、Bob、Alex、David | 根据产品、架构、实现、验证领域拆分任务 |
+| Emma       | Bob、Alex              | 将清晰需求交给架构设计或直接实现       |
+| Bob        | Alex                   | 将技术方案交给实现                     |
+| Alex       | David                  | 将实现结果交给验证（仅 Team Mode）     |
+| David      | Alex                   | 将可复现缺陷交回实现修复               |
+
+所有 `delegate_to_*` 输入都必须包含 `task` 和 `reason`。服务端根据调用者 Allowlist 再次校验目标；用户指定调度时，目标还必须属于用户本轮选择。仅输出交接文字不会触发调度。
 
 当前执行协议：
 
 - `prepareAgentRun` 将所有参与者置为 `assigned`。
 - `beginAgentTurn` 只把当前 Agent 置为 `active/running`，创建该 Agent 自己的流式 Assistant Message。
 - 当前 Agent 完成后写入 `agent.completed`；下一 Agent 开始时写入 `agent.handoff`，详情包含 `from/to`。
+- Agent Tool 成功执行时立即写入 `agent.delegated`，详情包含 `target/task/reason`；真正切换执行者时再写 `agent.handoff`。
 - 前一 Agent 的输出以有界交接上下文传给下一 Agent；每段最多 8,000 字符，避免无限增长。
 - 所有 Agent 完成后才写 `run.completed` 并释放 `projects.active_run_id`。
 

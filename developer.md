@@ -69,3 +69,10 @@
 - 涉及代码文件：`workflows/agent-run.ts`、`workflows/steps.ts`、`lib/runs/worker-store.ts`、`lib/agents/*`、`lib/tools/workspace-files.ts`、`lib/files/project-file.ts`、`components/workspace/project-workspace.tsx`、`components/chat/markdown-message.tsx`、`app/globals.css`、`TRD.md` 及对应单元测试。
 - 关键数据结构或方法：新增 `PreparedAgentRun/PreparedAgentTurn`、Team Mode 顺序执行与 `agent.handoff` Trace；将单文件写入升级为带 `coding.started` 信号的多文件原子 `coding` 工具；消息 Realtime 更新直接写入 Query Cache，并增加层级文件树、消息复制和单一 Active Agent 展示。
 - 上下游影响与依赖：Engineer Mode 仍固定 Alex，用户指定 Team 严格执行所选 Agent 的注册表顺序；`coding` 继续依赖 `project_files`、Tool Invocation 和 Trace，Editor 通过 Realtime 与轮询恢复；Terminal、Sandbox 和 Preview 执行能力仍未接入。
+
+### feat(workspace): delegate agents and preview static sites
+
+- Commit：`feat(workspace): delegate agents and preview static sites`
+- 涉及代码文件：`lib/agents/registry.ts`、`lib/tools/agent-delegation.ts`、`workflows/agent-run.ts`、`workflows/steps.ts`、`lib/runs/worker-store.ts`、`lib/preview/static-preview.ts`、`components/workspace/project-workspace.tsx`、`app/globals.css`、`TRD.md` 及对应单元测试。
+- 关键数据结构或方法：新增 `delegationTargetsByAgent`、`delegate_to_*` Tool、`executeAgentDelegationTool` 与动态执行队列；新增 `buildStaticPreview`，将项目内 HTML 和相对路径 CSS/JavaScript 投影到带严格 CSP 的隔离 iframe；复制按钮改为气泡外侧定位。
+- 上下游影响与依赖：Team Mode 可依照默认职责链动态追加 Agent，并分别记录 `agent.delegated` 与 `agent.handoff` Trace；用户指定调度仍限制在所选 Agent 内，Engineer Mode 运行时移除调度工具。静态 Preview 依赖 `project_files`，不执行构建且不能替代 React、Next.js 或服务端项目所需的 Vercel Sandbox。
