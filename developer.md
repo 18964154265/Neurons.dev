@@ -55,3 +55,10 @@
 - 涉及代码文件：`components/workspace/project-workspace.tsx`、`components/chat/markdown-message.tsx`、`package.json`、`pnpm-lock.yaml` 及 Markdown 组件测试；相关视觉规则位于前序 UI 提交的 `app/globals.css`。
 - 关键数据结构或方法：新增 `MarkdownMessage`，通过 `react-markdown` 与 `remark-gfm` 安全渲染消息并显示流式光标；消息活跃期补拉、Run/Trace 确定性刷新、失败 Trace 定位及真实执行 Agent 名称展示接入工作区。
 - 上下游影响与依赖：前端消费 Postgres/Realtime 持久化的增量 `messages.content.text`，Realtime 丢失时由轮询和 `lastEventSequence` 补齐；原始 HTML 不执行，外部链接使用隔离的新标签页。依赖后端稳定失败码、`latestRunId`、Agent 分配投影和流式批量写入。
+
+### fix(workspace): keep the chat composer visible
+
+- Commit：`fix(workspace): keep the chat composer visible`
+- 涉及代码文件：`app/globals.css`。
+- 关键数据结构或方法：约束 `.chat-pane` 为固定高度的三行 Grid，让 `.chat-timeline` 独立纵向滚动，并将 `.workspace-composer` 固定在 Grid 底部层级。
+- 上下游影响与依赖：长对话不再扩张左侧面板或挤出输入框；桌面与移动端继续复用现有工作区结构，不涉及接口、数据结构或运行时依赖变化。

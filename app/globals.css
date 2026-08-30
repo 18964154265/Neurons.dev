@@ -760,9 +760,12 @@ input::placeholder {
 }
 .chat-pane {
   position: relative;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: 56px minmax(0, 1fr) auto;
+  overflow: hidden;
   border-right: 1px solid #bcc5d0;
   background: #ffffff;
 }
@@ -840,9 +843,14 @@ input::placeholder {
   font-size: 11px;
 }
 .chat-timeline {
+  height: 100%;
+  min-width: 0;
   min-height: 0;
   padding: 20px 18px;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .timeline-state,
 .canvas-empty {
@@ -1073,6 +1081,9 @@ input::placeholder {
   line-height: 1.5;
 }
 .workspace-composer {
+  position: relative;
+  z-index: 5;
+  align-self: end;
   margin: 10px 12px 13px;
   padding: 9px;
   border: 1px solid var(--border);
