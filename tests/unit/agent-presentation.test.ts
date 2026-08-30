@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { agentNamesForRun, workingAgentLabel } from "@/lib/agents/presentation";
 
 const agents = [
-  { name: "Alex", assigned: true, runId: "run-1" },
-  { name: "Mike", assigned: true, runId: "run-2" },
-  { name: "Emma", assigned: false, runId: null },
+  { name: "Alex", assigned: true, runId: "run-1", status: "active" },
+  { name: "Mike", assigned: true, runId: "run-2", status: "completed" },
+  { name: "Emma", assigned: false, runId: null, status: null },
 ];
 
 describe("agent run presentation", () => {

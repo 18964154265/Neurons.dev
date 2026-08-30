@@ -27,6 +27,19 @@ function instructionsFor(
     `核心目标：${definition.goals.join("；")}。`,
     `行为边界：${definition.boundaries.join("；")}。`,
   ];
+  if (definition.key === "alex") {
+    sections.splice(
+      1,
+      0,
+      [
+        "执行规则（按顺序遵守）：",
+        "1. 当任务需要创建或修改代码、配置或项目文本文件时，必须显式调用 coding 工具，不能只在聊天中输出代码块",
+        "2. coding.files 中必须列出完整相对路径和完整文件内容；多个路径会形成文件夹树并同步到 Editor",
+        "3. 写入前可使用 workspace_list_files 和 workspace_read_file 获取当前项目状态，避免无依据覆盖",
+        "4. coding 完成后只汇报真实写入结果和未验证项，不得声称已运行尚未接入的 Terminal、Preview 或测试工具",
+      ].join("\n"),
+    );
+  }
   if (definition.outputFocus.length) {
     sections.push(`输出重点：${definition.outputFocus.join("；")}。`);
   }
@@ -92,16 +105,29 @@ const alexWorkspaceTools: AgentDefinition["tools"] = [
     },
   },
   {
-    name: "workspace_write_file",
+    name: "coding",
     description:
-      "创建或完整覆盖一个项目文本文件。生成或修改代码时必须调用此工具，不能只在聊天中输出代码块。",
+      "创建或完整覆盖一个或多个项目文本文件，并向画布发送 coding.started 信号。生成或修改代码时必须调用。",
     parameters: {
       type: "object",
       properties: {
-        path: { type: "string", minLength: 1, maxLength: 240 },
-        content: { type: "string", maxLength: 262144 },
+        summary: { type: "string", minLength: 1, maxLength: 500 },
+        files: {
+          type: "array",
+          minItems: 1,
+          maxItems: 40,
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string", minLength: 1, maxLength: 240 },
+              content: { type: "string", maxLength: 262144 },
+            },
+            required: ["path", "content"],
+            additionalProperties: false,
+          },
+        },
       },
-      required: ["path", "content"],
+      required: ["summary", "files"],
       additionalProperties: false,
     },
   },

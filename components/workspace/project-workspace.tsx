@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Editor from "@monaco-editor/react";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import {
   ArrowUp,
   AlertTriangle,
@@ -9,9 +10,12 @@ import {
   Braces,
   ChevronDown,
   CircleStop,
+  Check,
   Code2,
+  Copy,
   Eye,
   FileCode2,
+  Folder,
   GitBranch,
   History,
   Home,
@@ -72,6 +76,62 @@ type ProjectFile = {
   updatedAt: string;
 };
 
+type FileTreeRow =
+  | { key: string; kind: "folder"; name: string; depth: number }
+  | {
+      key: string;
+      kind: "file";
+      name: string;
+      depth: number;
+      file: ProjectFile;
+    };
+
+function buildFileTreeRows(files: ProjectFile[]): FileTreeRow[] {
+  type FolderNode = {
+    folders: Map<string, FolderNode>;
+    files: Array<{ name: string; file: ProjectFile }>;
+  };
+  const root: FolderNode = { folders: new Map(), files: [] };
+  for (const file of files) {
+    const parts = file.path.split("/");
+    const fileName = parts.pop() ?? file.path;
+    let node = root;
+    for (const folderName of parts) {
+      let folder = node.folders.get(folderName);
+      if (!folder) {
+        folder = { folders: new Map(), files: [] };
+        node.folders.set(folderName, folder);
+      }
+      node = folder;
+    }
+    node.files.push({ name: fileName, file });
+  }
+
+  const rows: FileTreeRow[] = [];
+  function visit(node: FolderNode, depth: number, parentPath: string) {
+    for (const [name, folder] of [...node.folders].sort(([left], [right]) =>
+      left.localeCompare(right),
+    )) {
+      const path = parentPath ? `${parentPath}/${name}` : name;
+      rows.push({ key: `folder:${path}`, kind: "folder", name, depth });
+      visit(folder, depth + 1, path);
+    }
+    for (const entry of [...node.files].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    )) {
+      rows.push({
+        key: `file:${entry.file.path}`,
+        kind: "file",
+        name: entry.name,
+        depth,
+        file: entry.file,
+      });
+    }
+  }
+  visit(root, 0, "");
+  return rows;
+}
+
 const views: Array<{ key: CanvasView; label: string; icon: React.ReactNode }> =
   [
     { key: "editor", label: "Editor", icon: <Code2 size={15} /> },
@@ -101,6 +161,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   >(null);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
@@ -112,12 +173,13 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       apiRequest<ConversationMessage[]>(
         `/api/v1/projects/${projectId}/messages?after=0&limit=100`,
       ),
-    refetchInterval: () => (projectQuery.data?.activeRunId ? 750 : false),
+    refetchInterval: () => (projectQuery.data?.activeRunId ? 1500 : false),
   });
   const agentsQuery = useQuery({
     queryKey: ["agents", projectId],
     queryFn: () =>
       apiRequest<AgentInfo[]>(`/api/v1/projects/${projectId}/agents`),
+    refetchInterval: () => (projectQuery.data?.activeRunId ? 500 : false),
   });
   const filesQuery = useQuery({
     queryKey: ["files", projectId],
@@ -177,8 +239,29 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           table: "messages",
           filter: `project_id=eq.${projectId}`,
         },
-        () =>
-          queryClient.invalidateQueries({ queryKey: ["messages", projectId] }),
+        (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+          const row = payload.new as Record<string, unknown>;
+          if (payload.eventType === "UPDATE" && typeof row.id === "string") {
+            queryClient.setQueryData<ConversationMessage[]>(
+              ["messages", projectId],
+              (current) =>
+                current?.map((message) =>
+                  message.id === row.id
+                    ? {
+                        ...message,
+                        status: row.status as ConversationMessage["status"],
+                        content: (row.content ?? message.content) as Record<
+                          string,
+                          unknown
+                        >,
+                      }
+                    : message,
+                ),
+            );
+            return;
+          }
+          queryClient.invalidateQueries({ queryKey: ["messages", projectId] });
+        },
       )
       .on(
         "postgres_changes",
@@ -203,7 +286,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           table: "trace_events",
           filter: `project_id=eq.${projectId}`,
         },
-        () => queryClient.invalidateQueries({ queryKey: ["events"] }),
+        (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+          queryClient.invalidateQueries({ queryKey: ["events"] });
+          const row = payload.new as Record<string, unknown>;
+          if (follow && row.event_type === "coding.started") setView("editor");
+        },
       )
       .on(
         "postgres_changes",
@@ -321,6 +408,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       null
     );
   }, [filesQuery.data, follow, observedRunId, selectedFilePath]);
+  const fileTreeRows = useMemo(
+    () => buildFileTreeRows(filesQuery.data ?? []),
+    [filesQuery.data],
+  );
 
   if (projectQuery.isLoading) {
     return (
@@ -376,6 +467,22 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     const message = prompt.trim();
     if (!message || sendMessage.isPending || runIsActive) return;
     sendMessage.mutate(message);
+  }
+
+  async function copyMessage(message: ConversationMessage) {
+    try {
+      await navigator.clipboard.writeText(messageText(message));
+    } catch {
+      return;
+    }
+    setCopiedMessageId(message.id);
+    window.setTimeout(
+      () =>
+        setCopiedMessageId((current) =>
+          current === message.id ? null : current,
+        ),
+      1500,
+    );
   }
 
   return (
@@ -457,7 +564,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 <span>
                   {message.role === "user"
                     ? "You"
-                    : (message.agentKey ?? "Neurons")}
+                    : ((agentsQuery.data ?? []).find(
+                        (agent) => agent.key === message.agentKey,
+                      )?.name ??
+                      message.agentKey ??
+                      "Neurons")}
                 </span>
                 <small>#{message.sequence}</small>
               </div>
@@ -465,6 +576,19 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 content={messageText(message)}
                 streaming={message.status === "streaming"}
               />
+              <button
+                className="message-copy-button"
+                type="button"
+                aria-label="复制消息内容"
+                title={copiedMessageId === message.id ? "已复制" : "复制"}
+                onClick={() => void copyMessage(message)}
+              >
+                {copiedMessageId === message.id ? (
+                  <Check size={13} />
+                ) : (
+                  <Copy size={13} />
+                )}
+              </button>
               {message.role === "assistant" && message.runId ? (
                 <button
                   className="trace-link"
@@ -700,20 +824,33 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 {filesQuery.isLoading ? (
                   <div className="empty-tree">正在加载项目文件…</div>
                 ) : null}
-                {(filesQuery.data ?? []).map((file) => (
-                  <button
-                    key={file.path}
-                    className={`file-tree-item ${selectedFile?.path === file.path ? "active" : ""}`}
-                    onClick={() => {
-                      setSelectedFilePath(file.path);
-                      setFollow(false);
-                    }}
-                    title={`${file.path} · revision ${file.revision}`}
-                  >
-                    <FileCode2 size={14} />
-                    <span>{file.path}</span>
-                  </button>
-                ))}
+                {fileTreeRows.map((row) =>
+                  row.kind === "folder" ? (
+                    <div
+                      key={row.key}
+                      className="file-tree-folder"
+                      style={{ paddingLeft: 8 + row.depth * 14 }}
+                    >
+                      <ChevronDown size={13} />
+                      <Folder size={14} />
+                      <span>{row.name}</span>
+                    </div>
+                  ) : (
+                    <button
+                      key={row.key}
+                      className={`file-tree-item ${selectedFile?.path === row.file.path ? "active" : ""}`}
+                      style={{ paddingLeft: 24 + row.depth * 14 }}
+                      onClick={() => {
+                        setSelectedFilePath(row.file.path);
+                        setFollow(false);
+                      }}
+                      title={`${row.file.path} · revision ${row.file.revision}`}
+                    >
+                      <FileCode2 size={14} />
+                      <span>{row.name}</span>
+                    </button>
+                  ),
+                )}
                 {!filesQuery.isLoading && filesQuery.data?.length === 0 ? (
                   <div className="empty-tree">
                     Alex 写入项目文件后会显示在这里

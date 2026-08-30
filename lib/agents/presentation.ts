@@ -2,12 +2,16 @@ type RunAgent = {
   name: string;
   assigned: boolean;
   runId: string | null;
+  status: string | null;
 };
 
 export function agentNamesForRun(agents: RunAgent[], runId: string | null) {
   if (!runId) return [];
   return agents
-    .filter((agent) => agent.assigned && agent.runId === runId)
+    .filter(
+      (agent) =>
+        agent.assigned && agent.runId === runId && agent.status === "active",
+    )
     .map((agent) => agent.name);
 }
 

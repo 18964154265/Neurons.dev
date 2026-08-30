@@ -44,8 +44,11 @@ describe("agent registry", () => {
     expect(resolveEngineerDefinition().tools.map((tool) => tool.name)).toEqual([
       "workspace_list_files",
       "workspace_read_file",
-      "workspace_write_file",
+      "coding",
     ]);
+    expect(resolveEngineerDefinition().instructions).toContain(
+      "必须显式调用 coding 工具",
+    );
     expect(
       agentDefinitions
         .filter((definition) => definition.key !== "alex")

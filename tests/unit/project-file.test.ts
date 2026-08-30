@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  codingInputSchema,
   languageForProjectFile,
   projectFilePathSchema,
   writeProjectFileInputSchema,
@@ -26,5 +27,29 @@ describe("project file boundary", () => {
     ).toThrow();
     expect(languageForProjectFile("app/page.tsx")).toBe("typescript");
     expect(languageForProjectFile("Dockerfile")).toBe("plaintext");
+  });
+
+  it("accepts a multi-file coding payload and rejects duplicate paths", () => {
+    expect(
+      codingInputSchema.parse({
+        summary: "创建页面",
+        files: [
+          {
+            path: "app/page.tsx",
+            content: "export default function Page() {}",
+          },
+          { path: "app/page.css", content: "body {}" },
+        ],
+      }).files,
+    ).toHaveLength(2);
+    expect(() =>
+      codingInputSchema.parse({
+        summary: "重复文件",
+        files: [
+          { path: "app/page.tsx", content: "one" },
+          { path: "app/page.tsx", content: "two" },
+        ],
+      }),
+    ).toThrow();
   });
 });

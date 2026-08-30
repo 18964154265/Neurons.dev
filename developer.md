@@ -62,3 +62,10 @@
 - 涉及代码文件：`app/globals.css`。
 - 关键数据结构或方法：约束 `.chat-pane` 为固定高度的三行 Grid，让 `.chat-timeline` 独立纵向滚动，并将 `.workspace-composer` 固定在 Grid 底部层级。
 - 上下游影响与依赖：长对话不再扩张左侧面板或挤出输入框；桌面与移动端继续复用现有工作区结构，不涉及接口、数据结构或运行时依赖变化。
+
+### feat(agents): run teams and stream coding changes
+
+- Commit：`feat(agents): run teams and stream coding changes`
+- 涉及代码文件：`workflows/agent-run.ts`、`workflows/steps.ts`、`lib/runs/worker-store.ts`、`lib/agents/*`、`lib/tools/workspace-files.ts`、`lib/files/project-file.ts`、`components/workspace/project-workspace.tsx`、`components/chat/markdown-message.tsx`、`app/globals.css`、`TRD.md` 及对应单元测试。
+- 关键数据结构或方法：新增 `PreparedAgentRun/PreparedAgentTurn`、Team Mode 顺序执行与 `agent.handoff` Trace；将单文件写入升级为带 `coding.started` 信号的多文件原子 `coding` 工具；消息 Realtime 更新直接写入 Query Cache，并增加层级文件树、消息复制和单一 Active Agent 展示。
+- 上下游影响与依赖：Engineer Mode 仍固定 Alex，用户指定 Team 严格执行所选 Agent 的注册表顺序；`coding` 继续依赖 `project_files`、Tool Invocation 和 Trace，Editor 通过 Realtime 与轮询恢复；Terminal、Sandbox 和 Preview 执行能力仍未接入。

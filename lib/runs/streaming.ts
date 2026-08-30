@@ -1,5 +1,5 @@
-export const STREAM_FLUSH_MIN_CHARS = 48;
-export const STREAM_FLUSH_INTERVAL_MS = 150;
+export const STREAM_FLUSH_MIN_CHARS = 24;
+export const STREAM_FLUSH_INTERVAL_MS = 90;
 
 export function shouldFlushAssistantStream({
   pendingCharacters,

@@ -1,25 +1,53 @@
-import type { PreparedEngineerRun } from "@/lib/runs/worker-store";
+import type {
+  PreparedAgentRun,
+  PreparedAgentTurn,
+} from "@/lib/runs/worker-store";
 import { shouldFlushAssistantStream } from "@/lib/runs/streaming";
+import type { AgentKey } from "@/lib/agents/registry";
 
 export async function prepareRunStep(runId: string) {
   "use step";
-  const { prepareEngineerRun } = await import("@/lib/runs/worker-store");
+  const { prepareAgentRun } = await import("@/lib/runs/worker-store");
   try {
-    return await prepareEngineerRun(runId);
+    return await prepareAgentRun(runId);
   } catch (error) {
     const { locatedError } = await import("@/lib/errors/located");
     throw locatedError(
       error,
       "RUN_PREPARATION_FAILED",
-      "lib/runs/worker-store.prepareEngineerRun",
+      "lib/runs/worker-store.prepareAgentRun",
     );
   }
 }
+prepareRunStep.maxRetries = 0;
 
-export async function runEngineerModelStep(run: PreparedEngineerRun) {
+export async function beginAgentTurnStep(
+  run: PreparedAgentRun,
+  agentKey: AgentKey,
+  previousAgentKey: AgentKey | null,
+) {
+  "use step";
+  const { beginAgentTurn } = await import("@/lib/runs/worker-store");
+  try {
+    return await beginAgentTurn(run, agentKey, previousAgentKey);
+  } catch (error) {
+    const { locatedError } = await import("@/lib/errors/located");
+    throw locatedError(
+      error,
+      "AGENT_TURN_START_FAILED",
+      "lib/runs/worker-store.beginAgentTurn",
+    );
+  }
+}
+beginAgentTurnStep.maxRetries = 0;
+
+export async function runAgentModelStep(
+  turn: PreparedAgentTurn,
+  previousOutputs: Array<{ agentKey: AgentKey; text: string }>,
+) {
   "use step";
   const [
-    { resolveEngineerDefinition },
+    { resolveAgentDefinition },
     { runEngineerTurn },
     { createOpenRouterLLMClient },
     { executeWorkspaceToolCall },
@@ -32,17 +60,25 @@ export async function runEngineerModelStep(run: PreparedEngineerRun) {
     import("@/lib/runs/worker-store"),
   ]);
 
-  const agent = resolveEngineerDefinition();
+  const agent = resolveAgentDefinition(turn.agentKey);
   const client = createOpenRouterLLMClient();
+  const handoffContext = previousOutputs.length
+    ? `\n\n团队前序交接（只作为已完成工作的上下文）：\n${previousOutputs
+        .map(
+          (output) =>
+            `[${resolveAgentDefinition(output.agentKey).displayName}]\n${output.text.slice(0, 8_000)}`,
+        )
+        .join("\n\n")}`
+    : "";
   const conversation: import("@/lib/llm/types").LLMMessage[] = [
-    { role: "user", content: run.prompt },
+    { role: "user", content: `${turn.prompt}${handoffContext}` },
   ];
   const allToolCalls: import("@/lib/llm/types").LLMToolCall[] = [];
   const totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let hasUsage = false;
   let completedText = "";
 
-  for (let turn = 0; turn < 8; turn += 1) {
+  for (let toolTurn = 0; toolTurn < 8; toolTurn += 1) {
     let result: Awaited<ReturnType<typeof runEngineerTurn>> | null = null;
     for (let attempt = 0; attempt < 4; attempt += 1) {
       let turnText = "";
@@ -67,9 +103,8 @@ export async function runEngineerModelStep(run: PreparedEngineerRun) {
               return;
             lastPersistedLength = streamedText.length;
             lastPersistedAt = Date.now();
-            // The final write in completeRunStep is authoritative; these writes only power Realtime UI.
             await store.updateAssistantStream(
-              run.assistantMessageId,
+              turn.assistantMessageId,
               streamedText,
             );
           },
@@ -102,7 +137,7 @@ export async function runEngineerModelStep(run: PreparedEngineerRun) {
     }
 
     if (result.toolCalls.length === 0) {
-      await store.updateAssistantStream(run.assistantMessageId, completedText);
+      await store.updateAssistantStream(turn.assistantMessageId, completedText);
       return {
         text: completedText,
         toolCalls: allToolCalls,
@@ -116,7 +151,7 @@ export async function runEngineerModelStep(run: PreparedEngineerRun) {
       toolCalls: result.toolCalls,
     });
     for (const call of result.toolCalls) {
-      const toolResult = await executeWorkspaceToolCall(run, call);
+      const toolResult = await executeWorkspaceToolCall(turn, call);
       conversation.push({
         role: "tool",
         content: toolResult.content,
@@ -128,26 +163,42 @@ export async function runEngineerModelStep(run: PreparedEngineerRun) {
   throw new Error("AGENT_TOOL_TURN_LIMIT_EXCEEDED");
 }
 
-// Provider retries are handled above so deterministic failures are never replayed by Workflow.
-runEngineerModelStep.maxRetries = 0;
+runAgentModelStep.maxRetries = 0;
 
-export async function completeRunStep(
-  run: PreparedEngineerRun,
-  output: Awaited<ReturnType<typeof runEngineerModelStep>>,
+export async function completeAgentTurnStep(
+  turn: PreparedAgentTurn,
+  output: Awaited<ReturnType<typeof runAgentModelStep>>,
 ) {
   "use step";
-  const { completeEngineerRun } = await import("@/lib/runs/worker-store");
+  const { completeAgentTurn } = await import("@/lib/runs/worker-store");
   try {
-    await completeEngineerRun(run, output);
+    await completeAgentTurn(turn, output);
+  } catch (error) {
+    const { locatedError } = await import("@/lib/errors/located");
+    throw locatedError(
+      error,
+      "AGENT_TURN_COMPLETION_FAILED",
+      "lib/runs/worker-store.completeAgentTurn",
+    );
+  }
+}
+completeAgentTurnStep.maxRetries = 0;
+
+export async function completeRunStep(run: PreparedAgentRun) {
+  "use step";
+  const { completeAgentRun } = await import("@/lib/runs/worker-store");
+  try {
+    await completeAgentRun(run);
   } catch (error) {
     const { locatedError } = await import("@/lib/errors/located");
     throw locatedError(
       error,
       "RUN_COMPLETION_PERSIST_FAILED",
-      "lib/runs/worker-store.completeEngineerRun",
+      "lib/runs/worker-store.completeAgentRun",
     );
   }
 }
+completeRunStep.maxRetries = 0;
 
 export async function failRunStep(
   runId: string,
@@ -167,3 +218,4 @@ export async function failRunStep(
     );
   }
 }
+failRunStep.maxRetries = 0;

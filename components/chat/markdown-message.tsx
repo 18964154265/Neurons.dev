@@ -1,9 +1,12 @@
 "use client";
 
+import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export function MarkdownMessage({
+const markdownPlugins = [remarkGfm];
+
+export const MarkdownMessage = memo(function MarkdownMessage({
   content,
   streaming = false,
 }: {
@@ -13,7 +16,7 @@ export function MarkdownMessage({
   return (
     <div className="markdown-content">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={markdownPlugins}
         components={{
           a: ({ children, href, title }) => (
             <a
@@ -34,4 +37,4 @@ export function MarkdownMessage({
       ) : null}
     </div>
   );
-}
+});

@@ -33,6 +33,18 @@ export const writeProjectFileInputSchema = z
   })
   .strict();
 
+export const codingInputSchema = z
+  .object({
+    summary: z.string().trim().min(1).max(500),
+    files: z.array(writeProjectFileInputSchema).min(1).max(40),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      new Set(value.files.map((file) => file.path)).size === value.files.length,
+    "同一次 coding 调用中不能包含重复路径。",
+  );
+
 export const readProjectFileInputSchema = z
   .object({ path: projectFilePathSchema })
   .strict();

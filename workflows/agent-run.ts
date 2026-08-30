@@ -1,5 +1,7 @@
 import {
-  runEngineerModelStep,
+  beginAgentTurnStep,
+  completeAgentTurnStep,
+  runAgentModelStep,
   prepareRunStep,
   completeRunStep,
   failRunStep,
@@ -13,8 +15,19 @@ export async function agentRunWorkflow(runId: string) {
 
   try {
     const run = await prepareRunStep(runId);
-    const output = await runEngineerModelStep(run);
-    await completeRunStep(run, output);
+    const outputs: Array<{
+      agentKey: (typeof run.agentKeys)[number];
+      text: string;
+    }> = [];
+    let previousAgentKey: (typeof run.agentKeys)[number] | null = null;
+    for (const agentKey of run.agentKeys) {
+      const turn = await beginAgentTurnStep(run, agentKey, previousAgentKey);
+      const output = await runAgentModelStep(turn, outputs);
+      await completeAgentTurnStep(turn, output);
+      outputs.push({ agentKey, text: output.text });
+      previousAgentKey = agentKey;
+    }
+    await completeRunStep(run);
     return { runId, status: "completed" as const };
   } catch (error) {
     const modelFailure = extractModelFailure(error);
@@ -25,7 +38,7 @@ export async function agentRunWorkflow(runId: string) {
       extractRunFailureCode(error);
     const failureDetail = modelFailure
       ? {
-          location: "workflows/steps.runEngineerModelStep:model",
+          location: "workflows/steps.runAgentModelStep:model",
           provider: modelFailure.provider,
         }
       : internalFailure

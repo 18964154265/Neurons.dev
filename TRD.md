@@ -662,11 +662,11 @@ none → starting → ready
 ### 11.3 P0 事件类型
 
 - `run.queued/planning/started/waiting/completed/failed/cancelled`
-- `agent.assigned/started/status/completed/failed`
+- `agent.assigned/started/handoff/status/completed/failed`
 - `message.started/delta/completed/failed`
 - `thought.summary`
 - `tool.proposed/approval_required/started/progress/completed/failed`
-- `file.opened/changed/saved`
+- `coding.started`、`file.opened/changed/saved`
 - `terminal.started/output/completed/failed`
 - `preview.starting/ready/failed`
 - `version.creating/ready/failed`
@@ -675,6 +675,7 @@ none → starting → ready
 ### 11.4 流量控制
 
 - 模型 Token 不逐 token 落库或广播；服务端按时间或字节窗口合并为 Delta。
+- 当前 Assistant Stream 在累计 24 字符或 90ms 时刷新同一条 Message；浏览器对 Realtime `messages UPDATE` 直接更新 Query Cache，不为每个 Delta 再发 REST 请求，1.5 秒轮询只负责断线兜底。
 - Terminal Output 按行数/字节聚合，并设置单事件大小上限。
 - Realtime 事件只携带 UI 必需内容；大详情通过 REST 或签名 Storage URL 获取。
 - Message 完成时写入最终文本，断线恢复不依赖所有 Delta 都存在。
@@ -777,7 +778,7 @@ type AgentDefinition = {
 - `toolLabels` 是安全的 UI 展示文案，不代表工具已经可以执行。
 - `tools` 才是发送给模型的可执行 Tool Allowlist；调用还必须通过服务端 Tool Executor 的名称、Schema、项目范围和副作用检查。
 - 五个 Agent 当前均使用定义版本 `1`，未设置 Agent 级 `model`，因此统一继承 `OPENROUTER_DEFAULT_MODEL`。
-- 当前持久 Workflow 只实现 Engineer Mode 的 Alex。Team Mode 的角色、默认任务图和投影已经定义，但多 Agent Scheduler/Executor 尚未接入；执行器会以 `TEAM_MODE_NOT_CONFIGURED` 安全失败，不得把展示配置描述为已经执行。
+- 当前持久 Workflow 同时支持 Engineer Mode 与 Team Mode。Engineer Mode 固定执行 Alex；Team Mode 将本轮已分配 Agent 按注册表稳定顺序串行执行，每次只有一个 Assignment 为 `active`，每次切换写入 `agent.handoff` Trace。
 - 当前 Tool Loop 最多 8 个模型回合；每次模型调用只对明确的瞬时 Provider 错误重试 3 次。单个 Workspace 文本文件最大 256 KiB，路径必须是项目根目录下的规范相对路径。
 
 #### 13.1.2 Mike — Team Lead（`mike@1`）
@@ -789,7 +790,7 @@ type AgentDefinition = {
 - 行为边界：默认不写业务代码；不和专业 Agent 重复执行；不创建新 Agent；严格尊重用户指定 Agent；并行任务不得发生文件写冲突。
 - 固定交接：需求不清楚 → Emma；架构或数据库 → Bob；功能或 Bug → Alex；测试、数据验证或验收 → David。
 - 展示工具标签：项目上下文读取、Agent 分配和取消、工作流状态管理、结果汇总、请求关键决策。
-- 当前可执行工具：无；Team Mode Executor 尚未接入。
+- 当前可执行工具：无；Mike 可作为 Team Workflow 中的模型执行节点和交接节点，但动态增删 Agent 的编排 Tool 尚未接入。
 
 #### 13.1.3 Emma — Product & Research（`emma@1`）
 
@@ -819,7 +820,7 @@ type AgentDefinition = {
 - 输出重点：实现结果、文件变更、验证证据、风险、未完成项。
 - 行为边界：默认是生产代码唯一主要写入者；不输出密钥；不伪造验证；危险操作、生产迁移和 Publish 需审批；遇到需求/架构矛盾时暂停；Engineer Mode 不隐式调用其他 Agent。
 - 展示工具标签：文件读写、Terminal、浏览器与 Web Preview、前后端开发、Supabase、测试与构建、部署准备。
-- 当前可执行工具：`workspace_list_files`、`workspace_read_file`、`workspace_write_file`。写入持久化到 `project_files`，生成 `tool_invocations` 与 `file.saved` Trace，并由 Editor 实时/轮询展示。
+- 当前可执行工具：`workspace_list_files`、`workspace_read_file`、`coding`。`coding` 一次最多原子写入 40 个文本文件，先发送 `coding.started` 跟随信号，再生成每个文件的 `file.saved` Trace；相对路径自动投影为 Editor 文件夹树。
 - 尚未接入：Sandbox 文件系统同步、Patch/Diff、Terminal、Preview、Validation、Supabase 管理、部署与 Publish Tool。因此 Alex 不能声称已经运行、构建、预览或部署仅写入 Editor 的文件。
 
 #### 13.1.6 David — Quality & Data Engineer（`david@1`）
@@ -843,8 +844,16 @@ type AgentDefinition = {
 
 Team Mode 分为：
 
-1. 自动调度：Scheduler 根据任务和 Agent Capability 产生有向无环执行计划。
-2. 用户指定：只从请求中的 Agent Keys 构建计划；能力不足时进入 `waiting_for_user`，不得静默添加 Agent。
+1. 自动调度：当前 P0 固定选择 Mike；基于任务分类动态生成 DAG 仍是后续能力。
+2. 用户指定：严格只执行请求中的 Agent Keys，不静默增加 Agent；执行顺序使用注册表稳定顺序 `Mike → Emma → Bob → Alex → David` 的所选子集。
+
+当前执行协议：
+
+- `prepareAgentRun` 将所有参与者置为 `assigned`。
+- `beginAgentTurn` 只把当前 Agent 置为 `active/running`，创建该 Agent 自己的流式 Assistant Message。
+- 当前 Agent 完成后写入 `agent.completed`；下一 Agent 开始时写入 `agent.handoff`，详情包含 `from/to`。
+- 前一 Agent 的输出以有界交接上下文传给下一 Agent；每段最多 8,000 字符，避免无限增长。
+- 所有 Agent 完成后才写 `run.completed` 并释放 `projects.active_run_id`。
 
 Team Plan 至少包含：
 
@@ -1349,7 +1358,7 @@ users/{userId}/projects/{projectId}/
 1. 五个 Agent 的头像资源。
 2. Mike、Emma、Bob、David 的可执行 Tool Allowlist、Schema、权限和限制。
 3. Alex 的 Sandbox、Terminal、Preview、Validation、Supabase 和部署 Tool。
-4. Team Mode Scheduler/Executor、交接产物协议、汇总步骤和并行锁实现。
+4. Team Mode 的动态任务分类/DAG、Mike 动态调度 Tool、专用汇总步骤和安全并行执行；当前已实现严格选人、顺序执行、handoff Trace 与有界交接上下文。
 5. Agent 级模型覆盖、OpenRouter 备用模型及能力路由策略。
 
 ### 26.2 产品与交互事项
