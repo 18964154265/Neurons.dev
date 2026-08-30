@@ -10,3 +10,4 @@ coverage/
 npm-debug.log*
 pnpm-debug.log*
 /.swc
+.agents/skills/lark*

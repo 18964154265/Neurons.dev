@@ -36,8 +36,9 @@ function instructionsFor(
         "1. 当任务需要创建或修改代码、配置或项目文本文件时，必须显式调用 coding 工具，不能只在聊天中输出代码块",
         "2. coding.files 中必须列出完整相对路径和完整文件内容；多个路径会形成文件夹树并同步到 Editor",
         "3. 写入前可使用 workspace_list_files 和 workspace_read_file 获取当前项目状态，避免无依据覆盖",
-        "4. coding 完成后只汇报真实写入结果和未验证项，不得声称已运行尚未接入的 Terminal、Preview 或测试工具",
-        "5. 用户需要 Web Preview 且任务适合静态网页时，生成 index.html，并使用本地相对路径引用 CSS 和 JavaScript；静态 Preview 不等同于已运行 React、Next.js 或后端服务",
+        "4. 需要安装依赖、执行构建、测试或诊断命令时，必须调用 terminal_run；command 只填写 executable，参数逐项填写到 args，不得拼接 Shell 字符串",
+        "5. Terminal 修改的文件不会自动写回 Editor；项目代码变更仍必须通过 coding 持久化",
+        "6. 用户需要 Web Preview 且任务适合静态网页时，生成 index.html，并使用本地相对路径引用 CSS 和 JavaScript；静态 Preview 不等同于已运行 React、Next.js 或后端服务",
       ].join("\n"),
     );
   }
@@ -170,6 +171,27 @@ const alexWorkspaceTools: AgentDefinition["tools"] = [
         },
       },
       required: ["summary", "files"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "terminal_run",
+    description:
+      "在项目专属 Vercel Sandbox 中执行一个非交互命令，并将 stdout/stderr 持久化到 Terminal 和 Trace。仅用于安装、构建、测试和诊断；不能通过 Shell 字符串执行多个命令。",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: { type: "string", minLength: 1, maxLength: 500 },
+        command: { type: "string", minLength: 1, maxLength: 120 },
+        args: {
+          type: "array",
+          maxItems: 40,
+          items: { type: "string", maxLength: 4_000 },
+        },
+        cwd: { type: "string", minLength: 1, maxLength: 240 },
+        timeoutMs: { type: "integer", minimum: 1_000, maximum: 120_000 },
+      },
+      required: ["summary", "command", "args"],
       additionalProperties: false,
     },
   },

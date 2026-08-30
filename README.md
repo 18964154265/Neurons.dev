@@ -10,6 +10,7 @@ Neurons 是一个面向大众的 AI Native Vibe Coding 工作区。用户通过�
 - pnpm `11.24.0`
 - 一个 Supabase 项目
 - 一个 OpenRouter API Key 和可用模型
+- 一个已关联项目的 Vercel 账户（使用真实 Terminal 时需要）
 
 确认版本：
 
@@ -50,6 +51,11 @@ cp .env.example .env
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`           | Supabase Publishable Key               |
 | `APP_URL`                                        | 本地使用 `http://localhost:3000`       |
 | `SUPABASE_SECRET_KEY`                            | 当前为可选服务端配置，不得暴露给浏览器 |
+| `VERCEL_TEAM_ID`                                 | 本地 Vercel Sandbox 所属 Team ID       |
+| `VERCEL_PROJECT_ID`                              | 本地 Vercel Sandbox 所属 Project ID    |
+| `VERCEL_TOKEN`                                   | 本地 Vercel Access Token               |
+
+项目工作区中的真实 Terminal 由 Vercel Sandbox 执行。在 Vercel 部署环境中优先使用平台注入的 `VERCEL_OIDC_TOKEN`；本地开发必须同时配置 `VERCEL_TEAM_ID`、`VERCEL_PROJECT_ID` 和 `VERCEL_TOKEN`。缺少凭据时页面仍可启动，但 Agent 调用 `terminal_run` 会以 `VERCEL_SANDBOX_CREDENTIALS_MISSING` 安全失败，不会回退到宿主机 Shell。
 
 如果数据库直连 URI 在本地网络不支持 IPv4，请使用 Supabase Dashboard 提供的 Session Pooler URI。连接串中的密码包含特殊字符时，需要按 URI 规则编码。
 

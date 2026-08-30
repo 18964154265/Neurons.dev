@@ -14,6 +14,8 @@ import {
 } from "@/lib/files/project-file";
 import type { LLMToolCall } from "@/lib/llm/types";
 import type { PreparedAgentTurn } from "@/lib/runs/worker-store";
+import { terminalRunInputSchema } from "@/lib/terminal/types";
+import { executeTerminalCommand } from "@/lib/tools/terminal";
 
 export type WorkspaceToolResult = {
   toolCallId: string;
@@ -36,20 +38,24 @@ function parseArguments(call: LLMToolCall) {
   }
 }
 
-function safeToolError(error: unknown) {
+function safeToolError(error: unknown, location: string) {
   if (error instanceof ZodError) {
     return {
       ok: false,
       error: "TOOL_ARGUMENTS_INVALID",
+      location,
       issues: error.issues.map(({ path, message }) => ({ path, message })),
     };
   }
+  const message =
+    error instanceof Error ? error.message : "TOOL_EXECUTION_FAILED";
   return {
     ok: false,
-    error:
-      error instanceof Error
-        ? error.message.slice(0, 240)
-        : "TOOL_EXECUTION_FAILED",
+    error: message
+      .replace(/\bBearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
+      .replace(/\bsk-[A-Za-z0-9_-]+/g, "[REDACTED]")
+      .slice(0, 240),
+    location,
   };
 }
 
@@ -157,6 +163,13 @@ async function executeWorkspaceOperation(
     };
   }
 
+  if (call.name === "terminal_run") {
+    return {
+      output: await executeTerminalCommand(run, input),
+      filePaths: [],
+    };
+  }
+
   throw new Error(`TOOL_NOT_IMPLEMENTED:${call.name}`);
 }
 
@@ -183,9 +196,32 @@ export async function executeWorkspaceToolCall(
     operation = await executeWorkspaceOperation(run, call);
   } catch (error) {
     status = "failed";
-    operation = { output: safeToolError(error), filePaths: [] };
+    operation = {
+      output: safeToolError(
+        error,
+        `lib/tools/workspace-files.executeWorkspaceOperation:${call.name}`,
+      ),
+      filePaths: [],
+    };
   }
   const persistedOutput = JSON.parse(JSON.stringify(operation.output));
+  const persistedInput =
+    call.name === "terminal_run"
+      ? (() => {
+          try {
+            const input = terminalRunInputSchema.parse(parseArguments(call));
+            return {
+              summary: input.summary,
+              command: input.command,
+              argCount: input.args.length,
+              cwd: input.cwd,
+              timeoutMs: input.timeoutMs,
+            };
+          } catch {
+            return { invalid: true };
+          }
+        })()
+      : { arguments: call.arguments.slice(0, 2000) };
 
   await sql.begin(async (transaction) => {
     const invocationRows = await transaction<Array<{ id: string }>>`
@@ -194,7 +230,7 @@ export async function executeWorkspaceToolCall(
         status, input_redacted, output_redacted, duration_ms, started_at, completed_at
       ) values (
         ${run.projectId}::uuid, ${run.runId}::uuid, ${run.agentKey}, ${call.name}, 1, ${key},
-        ${status}, ${transaction.json({ arguments: call.arguments.slice(0, 2000) })},
+        ${status}, ${transaction.json(persistedInput)},
         ${transaction.json(persistedOutput)}, ${Date.now() - startedAt}, now(), now()
       )
       on conflict (effect_key) do update set effect_key = excluded.effect_key

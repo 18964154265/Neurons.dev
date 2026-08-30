@@ -41,6 +41,7 @@ import { buildStaticPreview } from "@/lib/preview/static-preview";
 import type { AgentRun } from "@/lib/runs/repository";
 import { runFailureMessage } from "@/lib/runs/failure";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import type { TerminalSession } from "@/lib/terminal/types";
 
 type CanvasView = "editor" | "terminal" | "preview" | "trace";
 type AgentInfo = {
@@ -253,6 +254,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   >(null);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [selectedTerminalSessionId, setSelectedTerminalSessionId] = useState<
+    string | null
+  >(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [copiedTraceAction, setCopiedTraceAction] = useState<string | null>(
     null,
@@ -285,6 +289,12 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     queryKey: ["files", projectId],
     queryFn: () =>
       apiRequest<ProjectFile[]>(`/api/v1/projects/${projectId}/files`),
+    refetchInterval: () => (projectQuery.data?.activeRunId ? 750 : false),
+  });
+  const terminalQuery = useQuery({
+    queryKey: ["terminal", projectId],
+    queryFn: () =>
+      apiRequest<TerminalSession[]>(`/api/v1/projects/${projectId}/terminal`),
     refetchInterval: () => (projectQuery.data?.activeRunId ? 750 : false),
   });
 
@@ -432,6 +442,36 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           if (follow) setView("editor");
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "terminal_sessions",
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+          queryClient.invalidateQueries({ queryKey: ["terminal", projectId] });
+          const row = payload.new as Record<string, unknown>;
+          if (follow && typeof row.id === "string") {
+            setSelectedTerminalSessionId(row.id);
+            setView("terminal");
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "terminal_chunks",
+          filter: `project_id=eq.${projectId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["terminal", projectId] });
+          if (follow) setView("terminal");
+        },
+      )
       .subscribe();
 
     return () => {
@@ -528,6 +568,14 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       null
     );
   }, [filesQuery.data, follow, observedRunId, selectedFilePath]);
+  const selectedTerminalSession = useMemo(() => {
+    const sessions = terminalQuery.data ?? [];
+    return (
+      sessions.find((session) => session.id === selectedTerminalSessionId) ??
+      sessions[0] ??
+      null
+    );
+  }, [selectedTerminalSessionId, terminalQuery.data]);
   const fileTreeRows = useMemo(
     () => buildFileTreeRows(filesQuery.data ?? []),
     [filesQuery.data],
@@ -1053,13 +1101,63 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           {view === "terminal" ? (
             <div className="terminal-surface">
               <div className="terminal-title">
-                <TerminalSquare size={14} /> TERMINAL
+                <span>
+                  <TerminalSquare size={14} /> TERMINAL
+                </span>
+                {terminalQuery.data?.length ? (
+                  <select
+                    aria-label="Terminal 会话"
+                    value={selectedTerminalSession?.id ?? ""}
+                    onChange={(event) =>
+                      setSelectedTerminalSessionId(event.target.value)
+                    }
+                  >
+                    {terminalQuery.data.map((session) => (
+                      <option key={session.id} value={session.id}>
+                        {session.agentKey ?? "Agent"} · {session.commandSummary}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
               </div>
-              <div className="canvas-empty dark-empty">
-                <span className="terminal-prompt">$</span>
-                <strong>暂无终端会话</strong>
-                <p>Agent 执行真实命令后，输出会按顺序显示并可在刷新后恢复。</p>
-              </div>
+              {selectedTerminalSession ? (
+                <div className="terminal-output" role="log" aria-live="polite">
+                  <div className="terminal-command-line">
+                    <span className="terminal-prompt">$</span>
+                    <strong>{selectedTerminalSession.commandSummary}</strong>
+                    <small data-status={selectedTerminalSession.status}>
+                      {selectedTerminalSession.status}
+                    </small>
+                  </div>
+                  {selectedTerminalSession.chunks.map((chunk) => (
+                    <pre
+                      key={chunk.id}
+                      className={`terminal-chunk ${chunk.stream}`}
+                    >
+                      {chunk.content}
+                    </pre>
+                  ))}
+                  {!selectedTerminalSession.chunks.length ? (
+                    <p className="terminal-waiting">等待命令输出…</p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="canvas-empty dark-empty">
+                  <span className="terminal-prompt">$</span>
+                  <strong>
+                    {terminalQuery.isLoading ? "正在加载终端…" : "暂无终端会话"}
+                  </strong>
+                  <p>
+                    Agent 调用 terminal_run 后，stdout 和 stderr
+                    会在这里按顺序显示。
+                  </p>
+                  {terminalQuery.isError ? (
+                    <p className="inline-error">
+                      Terminal 加载失败：{terminalQuery.error.message}
+                    </p>
+                  ) : null}
+                </div>
+              )}
             </div>
           ) : null}
           {view === "preview" ? (
@@ -1106,75 +1204,79 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           {view === "trace" ? (
             <div className="trace-surface">
               <aside className="trace-list">
-                <div className="trace-list-title">RUN TRACE</div>
-                {traceRuns.length ? (
-                  <label className="trace-run-picker">
-                    <span>执行轮次</span>
-                    <select
-                      value={observedRunId ?? ""}
-                      onChange={(event) => {
-                        setSelectedRunId(event.target.value);
-                        setSelectedTraceId(null);
-                      }}
-                      disabled={Boolean(activeRunId)}
-                    >
-                      {traceRuns.map((run, index) => (
-                        <option key={run.runId} value={run.runId}>
-                          {index === 0 ? "最新 · " : ""}
-                          {run.agentKey} 回复 #{run.sequence}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                {eventsQuery.isLoading ||
-                (eventsQuery.isFetching && !eventsQuery.data?.length) ? (
-                  <p className="muted">加载中…</p>
-                ) : null}
-                {(eventsQuery.data ?? []).map((event) => {
-                  const visual = traceVisual(event);
-                  const duration = traceDuration(event);
-                  return (
-                    <button
-                      key={event.id}
-                      className={`trace-event-row trace-event-${visual.kind} ${
-                        selectedTrace?.id === event.id ? "active" : ""
-                      }`}
-                      onClick={() => setSelectedTraceId(event.id)}
-                    >
-                      <span className="trace-event-node">{visual.icon}</span>
-                      <div className="trace-event-content">
-                        <div className="trace-event-heading">
-                          <strong>{event.event_type}</strong>
-                          <small>{traceTime(event.created_at)}</small>
+                <div className="trace-list-header">
+                  <div className="trace-list-title">RUN TRACE</div>
+                  {traceRuns.length ? (
+                    <label className="trace-run-picker">
+                      <span>执行轮次</span>
+                      <select
+                        value={observedRunId ?? ""}
+                        onChange={(event) => {
+                          setSelectedRunId(event.target.value);
+                          setSelectedTraceId(null);
+                        }}
+                        disabled={Boolean(activeRunId)}
+                      >
+                        {traceRuns.map((run, index) => (
+                          <option key={run.runId} value={run.runId}>
+                            {index === 0 ? "最新 · " : ""}
+                            {run.agentKey} 回复 #{run.sequence}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+                <div className="trace-event-list">
+                  {eventsQuery.isLoading ||
+                  (eventsQuery.isFetching && !eventsQuery.data?.length) ? (
+                    <p className="muted">加载中…</p>
+                  ) : null}
+                  {(eventsQuery.data ?? []).map((event) => {
+                    const visual = traceVisual(event);
+                    const duration = traceDuration(event);
+                    return (
+                      <button
+                        key={event.id}
+                        className={`trace-event-row trace-event-${visual.kind} ${
+                          selectedTrace?.id === event.id ? "active" : ""
+                        }`}
+                        onClick={() => setSelectedTraceId(event.id)}
+                      >
+                        <span className="trace-event-node">{visual.icon}</span>
+                        <div className="trace-event-content">
+                          <div className="trace-event-heading">
+                            <strong>{event.event_type}</strong>
+                            <small>{traceTime(event.created_at)}</small>
+                          </div>
+                          <span className="trace-event-summary">
+                            {event.summary || event.status}
+                          </span>
+                          <small className="trace-event-meta">
+                            #{event.sequence}
+                            {duration ? ` · ${duration}` : ""}
+                          </small>
                         </div>
-                        <span className="trace-event-summary">
-                          {event.summary || event.status}
-                        </span>
-                        <small className="trace-event-meta">
-                          #{event.sequence}
-                          {duration ? ` · ${duration}` : ""}
-                        </small>
-                      </div>
-                    </button>
-                  );
-                })}
-                {!eventsQuery.isFetching &&
-                !eventsQuery.isError &&
-                eventsQuery.data?.length === 0 ? (
-                  <p className="empty-trace">当前 Run 还没有可见 Trace。</p>
-                ) : null}
-                {eventsQuery.isError ? (
-                  <div className="empty-trace" role="alert">
-                    <p>Trace 加载失败：{eventsQuery.error.message}</p>
-                    <button
-                      className="text-button"
-                      onClick={() => void eventsQuery.refetch()}
-                    >
-                      重新加载
-                    </button>
-                  </div>
-                ) : null}
+                      </button>
+                    );
+                  })}
+                  {!eventsQuery.isFetching &&
+                  !eventsQuery.isError &&
+                  eventsQuery.data?.length === 0 ? (
+                    <p className="empty-trace">当前 Run 还没有可见 Trace。</p>
+                  ) : null}
+                  {eventsQuery.isError ? (
+                    <div className="empty-trace" role="alert">
+                      <p>Trace 加载失败：{eventsQuery.error.message}</p>
+                      <button
+                        className="text-button"
+                        onClick={() => void eventsQuery.refetch()}
+                      >
+                        重新加载
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </aside>
               <article className="trace-detail">
                 {selectedTrace ? (

@@ -19,6 +19,174 @@
       "skillPath": "codex-frontend-design/skills/frontend-design/SKILL.md",
       "computedHash": "292e6a5473b4f571fa5a1ad0fb7e060da2dd5c87f9acc3a75a89e22b4ee96ad3"
     },
+    "lark-approval": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-approval/SKILL.md",
+      "computedHash": "eec811b02f0397f354d1b8f37ce4f776501f828fda5ac6eef406aec619db3807"
+    },
+    "lark-apps": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-apps/SKILL.md",
+      "computedHash": "022371ab2fb9494ed16f93d63844303fc433e9bae640349e5191b9cfa06a6484"
+    },
+    "lark-attendance": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-attendance/SKILL.md",
+      "computedHash": "45c8ec357a987fa755b57a757ad01d00c32a5a6e3eb96d3902d8851aad6f8528"
+    },
+    "lark-base": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-base/SKILL.md",
+      "computedHash": "f9021213a9531bff893aeb6c66418d8b2b588ef628560ba736184142df97d5f0"
+    },
+    "lark-calendar": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-calendar/SKILL.md",
+      "computedHash": "04c11db51927f153da78e625ca9bae2fcaa862e796dae3190d86edd052320ed2"
+    },
+    "lark-contact": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-contact/SKILL.md",
+      "computedHash": "ad4a1f30943ef2ef5882181ae3563d0d5b11f1bfd5a32fb1bc56ed7529a539dc"
+    },
+    "lark-doc": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-doc/SKILL.md",
+      "computedHash": "3dc6f592cc26a04f160dcd2aec23401e677dc8d0e5d0969de4acd0254d9993d5"
+    },
+    "lark-drive": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-drive/SKILL.md",
+      "computedHash": "4989eb88a17b59fb04efae879fa9d79b59850f011bb8692d2e5ab23418f06c07"
+    },
+    "lark-event": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-event/SKILL.md",
+      "computedHash": "aaa4957b89b4ca203ac3ab7b971c9401ea06b024f9c705d7d7ea28a7431fcf17"
+    },
+    "lark-im": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-im/SKILL.md",
+      "computedHash": "8ed59665b4c2624253ac3c96eb4dec62390162909a87f419c02657624c479cf1"
+    },
+    "lark-mail": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-mail/SKILL.md",
+      "computedHash": "94f31863db8cce4e42f7f013e1cf00720af2b1113374e1780f9a14cd2828aa4e"
+    },
+    "lark-markdown": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-markdown/SKILL.md",
+      "computedHash": "b90e8f0f7828d259e0f5558d6f094caf6c8337f2e0e32a64d330ce81ac69b8a4"
+    },
+    "lark-meeting": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-meeting/SKILL.md",
+      "computedHash": "fd8a09b803c56cead873e7549c9ea4d70a6fd70cf3ddfe699911717b4d9313fd"
+    },
+    "lark-minutes": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-minutes/SKILL.md",
+      "computedHash": "36007b61fb3b1218818f1ede2b8852577612c4c837eb6549842783a8080d4100"
+    },
+    "lark-note": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-note/SKILL.md",
+      "computedHash": "ba0bdac5782db7558a8cd60ec78ab04f05d2e5088f39a4464dc399941f73cf47"
+    },
+    "lark-okr": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-okr/SKILL.md",
+      "computedHash": "d3b3d1a0b16094e75c24f02fbc4a99cf6d4e13c41ce09a905a34d2583db91312"
+    },
+    "lark-openapi-explorer": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-openapi-explorer/SKILL.md",
+      "computedHash": "a49ad0ad41b4bdeec9f5ccae6d5f6fba7b128fae0b0f428fde7df94cda6e6555"
+    },
+    "lark-shared": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-shared/SKILL.md",
+      "computedHash": "842b7ecf191f71305ac17b4386ab230141709c70f6cf3bcbbb2b98795be6db3f"
+    },
+    "lark-sheets": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-sheets/SKILL.md",
+      "computedHash": "d7d97c7cdadb21de6c66ce2ef2cd35f61f6ffad942d39881d41e74fe9abb31a8"
+    },
+    "lark-skill-maker": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-skill-maker/SKILL.md",
+      "computedHash": "78e2f8725d2525c846bd1fd07d82bdc718be4c382b9971d3d74ffa14d3e2b7c5"
+    },
+    "lark-slides": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-slides/SKILL.md",
+      "computedHash": "f31da8c201bc09afdbb2e7b784fb1dfc8ce57a032bb879f6f3caf56e5ac57574"
+    },
+    "lark-task": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-task/SKILL.md",
+      "computedHash": "4ffdae676720dbc1dfeb3c6ad49706eb2a47034740885a8c1f3aa3cdd2ac99b0"
+    },
+    "lark-vc": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-vc/SKILL.md",
+      "computedHash": "9e0a255c336affecff0ea74d213a55c05f150018b4a69ce6c61ee9f3d7184286"
+    },
+    "lark-vc-agent": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-vc-agent/SKILL.md",
+      "computedHash": "6dc3c8a59636e9ed4a6ffd4041b832ff2557fd3c8563c53c40d480a4516ef851"
+    },
+    "lark-whiteboard": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-whiteboard/SKILL.md",
+      "computedHash": "4d7f5af1d2d86e8d8e06c375294cfa582730e4725961f5f0b4d8f9f8c91491d6"
+    },
+    "lark-wiki": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-wiki/SKILL.md",
+      "computedHash": "e93d76303d4fa541e4472327997b82be005fa079e2ebe54caa6d646e1ce684fe"
+    },
+    "lark-workflow-meeting-summary": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-workflow-meeting-summary/SKILL.md",
+      "computedHash": "682ca89d8cb4531a84a82c86ee98039ae919f5b3cfcc86f89529ecd4ba98727a"
+    },
+    "lark-workflow-standup-report": {
+      "source": "larksuite/cli",
+      "sourceType": "github",
+      "skillPath": "skills/lark-workflow-standup-report/SKILL.md",
+      "computedHash": "aa3abd39e90c8150a6d152d56a33da71e883baacde3e4a2bc51b5289fddcd8a2"
+    },
     "llm-security": {
       "source": "semgrep/skills",
       "sourceType": "github",

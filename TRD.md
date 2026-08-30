@@ -672,7 +672,7 @@ none → starting → ready
 - `thought.summary`
 - `tool.proposed/approval_required/started/progress/completed/failed`
 - `coding.started`、`file.opened/changed/saved`
-- `terminal.started/output/completed/failed`
+- `terminal.started/output/completed/failed`（已接入：`terminal_run` 通过 Vercel Sandbox 执行 executable + argv，输出持久化到 `terminal_sessions` / `terminal_chunks` 并由 Terminal View 实时补拉）
 - `preview.starting/ready/failed`
 - `version.creating/ready/failed`
 - `follow.target_changed`
@@ -828,8 +828,8 @@ type AgentDefinition = {
 - 输出重点：实现结果、文件变更、验证证据、风险、未完成项。
 - 行为边界：默认是生产代码唯一主要写入者；不输出密钥；不伪造验证；危险操作、生产迁移和 Publish 需审批；遇到需求/架构矛盾时暂停；Engineer Mode 不隐式调用其他 Agent。
 - 展示工具标签：文件读写、Terminal、浏览器与 Web Preview、前后端开发、Supabase、测试与构建、部署准备。
-- 当前可执行工具：`workspace_list_files`、`workspace_read_file`、`coding`、`delegate_to_david`。`coding` 一次最多原子写入 40 个文本文件，先发送 `coding.started` 跟随信号，再生成每个文件的 `file.saved` Trace；相对路径自动投影为 Editor 文件夹树。Team Mode 中 Alex 可把验证任务交给 David；Engineer Mode 会移除该调度 Tool。
-- Web Preview 已接入静态 `index.html` 渲染，但不是模型 Tool，也不代表执行了构建。尚未接入：Sandbox 文件系统同步、Patch/Diff、Terminal、动态应用 Preview、Validation、Supabase 管理、部署与 Publish Tool。因此 Alex 不能声称已经运行、构建或部署仅写入 Editor 的文件。
+- 当前可执行工具：`workspace_list_files`、`workspace_read_file`、`coding`、`terminal_run`、`delegate_to_david`。`coding` 一次最多原子写入 40 个文本文件，先发送 `coding.started` 跟随信号，再生成每个文件的 `file.saved` Trace；相对路径自动投影为 Editor 文件夹树。`terminal_run` 将当前 `project_files` 单向同步到项目专属 Vercel Sandbox，以 executable + argv 形式运行最长 120 秒的非交互命令；不允许 Shell executable，外网仅开放常用包仓库与 GitHub 域名，命令参数不进入用户可见 Trace。stdout/stderr 经限频分块后写入 `terminal_chunks`，Terminal View 可实时补拉。Team Mode 中 Alex 可把验证任务交给 David；Engineer Mode 会移除该调度 Tool。
+- Web Preview 已接入静态 `index.html` 渲染，但不是模型 Tool，也不代表执行了构建。Terminal 对 Sandbox 的文件同步目前是单向的，命令产生的文件变更不会回写 Editor，持久代码变更仍必须调用 `coding`。尚未接入：Sandbox Snapshot/文件回写、Patch/Diff、动态应用 Preview、Validation、Supabase 管理、部署与 Publish Tool。因此 Alex 只能依据 `terminal_run` 的真实返回值声称命令已运行，不能把仅写入 Editor 的文件描述为已经构建或部署。
 
 #### 13.1.6 David — Quality & Data Engineer（`david@1`）
 

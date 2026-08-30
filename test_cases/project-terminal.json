@@ -1,0 +1,44 @@
+{
+  "endpoint": "GET /api/v1/projects/:projectId/terminal",
+  "test_cases": [
+    {
+      "description": "项目所有者读取最近 Terminal 会话及有序输出",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "data": [
+          {
+            "agentKey": "alex",
+            "commandSummary": "运行类型检查",
+            "cwd": ".",
+            "status": "completed",
+            "chunks": [
+              {
+                "sequence": 1,
+                "stream": "stdout"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "非项目所有者无法读取 Terminal 会话",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 200,
+      "expectedBody": { "data": [] }
+    },
+    {
+      "description": "未登录用户读取 Terminal 会话",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 401,
+      "expectedErrorCode": "AUTH_REQUIRED"
+    },
+    {
+      "description": "非法项目 ID 被拒绝",
+      "projectId": "not-a-uuid",
+      "expectedStatus": 400,
+      "expectedErrorCode": "VALIDATION_ERROR"
+    }
+  ]
+}
