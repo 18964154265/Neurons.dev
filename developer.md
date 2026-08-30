@@ -19,3 +19,10 @@
 - 涉及代码文件：`lib/agents/registry.ts`、`supabase/migrations/202608300001_agent_definitions.sql`、`PRD.md`、`TRD.md`、`AGENTS.md` 及对应单元测试。
 - 关键数据结构或方法：新增 Mike、Emma、Bob、Alex、David 的版本化 `AgentDefinition`，固定 Engineer Mode 使用 Alex，并建立数据库安全展示投影；同时约定每次提交前维护本文件。
 - 上下游影响与依赖：服务端注册表是 Agent 行为和权限的权威来源，数据库仅提供可公开展示的描述与能力标签；运行态接入由后续 Run 提交完成，部署前需按顺序应用新迁移。
+
+### feat(auth): add persistent password sessions
+
+- Commit：`feat(auth): add persistent password sessions`
+- 涉及代码文件：`app/login/page.tsx`、`app/reset-password/page.tsx`、`components/dashboard/dashboard.tsx`、`lib/auth/credentials.ts`、`lib/forms/submit-on-enter.ts`、`app/globals.css`、`README.md` 及对应测试。
+- 关键数据结构或方法：新增 Email/Password 注册登录、密码重置、当前设备退出、认证输入校验和输入框 Enter/Shift+Enter 判定。
+- 上下游影响与依赖：依赖 Supabase Auth Cookie Session、回调路由和 `proxy.ts` Token 刷新；同一 `auth.users.id` 继续通过 RLS 读取原项目，README 补充本地环境、迁移与 Auth Redirect 配置。

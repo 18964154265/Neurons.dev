@@ -8,6 +8,7 @@ import {
   FolderKanban,
   LoaderCircle,
   LogIn,
+  LogOut,
   Plus,
   RotateCcw,
   Sparkles,
@@ -18,7 +19,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { apiRequest, ApiClientError } from "@/lib/api/client";
+import { shouldSubmitTextareaOnEnter } from "@/lib/forms/submit-on-enter";
 import type { CreateProjectResult, ProjectSummary } from "@/lib/projects/types";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type Mode = "engineer" | "team";
 
@@ -61,8 +64,22 @@ export function Dashboard() {
     },
   });
 
+  const signOut = useMutation({
+    mutationFn: async () => {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.clear();
+      router.replace("/login");
+      router.refresh();
+    },
+  });
+
   const authRequired =
-    projectsQuery.error instanceof ApiClientError && projectsQuery.error.code === "AUTH_REQUIRED";
+    projectsQuery.error instanceof ApiClientError &&
+    projectsQuery.error.code === "AUTH_REQUIRED";
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -78,7 +95,10 @@ export function Dashboard() {
           <span className="brand-mark">N</span>
           <span>Neurons</span>
         </div>
-        <button className="new-project-button" onClick={() => document.getElementById("prompt")?.focus()}>
+        <button
+          className="new-project-button"
+          onClick={() => document.getElementById("prompt")?.focus()}
+        >
           <Plus size={16} /> 新项目
         </button>
         <nav className="sidebar-section" aria-label="项目导航">
@@ -91,7 +111,11 @@ export function Dashboard() {
           </div>
           <div className="recent-projects">
             {(projectsQuery.data ?? []).slice(0, 8).map((project) => (
-              <Link key={project.id} href={`/projects/${project.id}`} className="recent-project-link">
+              <Link
+                key={project.id}
+                href={`/projects/${project.id}`}
+                className="recent-project-link"
+              >
                 <span>{project.name}</span>
                 <small>{relativeTime(project.updatedAt)}</small>
               </Link>
@@ -107,8 +131,29 @@ export function Dashboard() {
           </span>
           <div>
             <strong>你的工作区</strong>
-            <span>{authRequired ? "尚未登录" : "已连接"}</span>
+            <span>
+              {authRequired
+                ? "尚未登录"
+                : projectsQuery.isSuccess
+                  ? "已连接"
+                  : "正在连接"}
+            </span>
           </div>
+          {projectsQuery.isSuccess ? (
+            <button
+              className="icon-button account-signout"
+              aria-label="退出登录"
+              title="退出登录"
+              disabled={signOut.isPending}
+              onClick={() => signOut.mutate()}
+            >
+              {signOut.isPending ? (
+                <LoaderCircle className="spin" size={15} />
+              ) : (
+                <LogOut size={15} />
+              )}
+            </button>
+          ) : null}
         </div>
       </aside>
 
@@ -117,7 +162,9 @@ export function Dashboard() {
           <div>
             <p className="eyebrow">BUILD SOMETHING REAL</p>
             <h1>今天想创造什么？</h1>
-            <p className="muted">描述你的想法，Neurons 会把这段对话变成一个持续工作的项目。</p>
+            <p className="muted">
+              描述你的想法，Neurons 会把这段对话变成一个持续工作的项目。
+            </p>
           </div>
           {authRequired ? (
             <Link className="secondary-button" href="/login">
@@ -131,6 +178,18 @@ export function Dashboard() {
             id="prompt"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                !shouldSubmitTextareaOnEnter({
+                  key: event.key,
+                  shiftKey: event.shiftKey,
+                  isComposing: event.nativeEvent.isComposing,
+                })
+              )
+                return;
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }}
             placeholder="例如：创建一个极简的旅行计划工具，可以保存地点并按日期整理……"
             aria-label="描述要创建的应用"
             rows={4}
@@ -156,9 +215,15 @@ export function Dashboard() {
             <button
               className="send-button"
               aria-label="创建项目"
-              disabled={!prompt.trim() || createProject.isPending || authRequired}
+              disabled={
+                !prompt.trim() || createProject.isPending || authRequired
+              }
             >
-              {createProject.isPending ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />}
+              {createProject.isPending ? (
+                <LoaderCircle className="spin" size={18} />
+              ) : (
+                <ArrowUp size={18} />
+              )}
             </button>
           </div>
           {createProject.error ? (
@@ -173,7 +238,10 @@ export function Dashboard() {
               <h2 id="projects-title">项目</h2>
             </div>
             {projectsQuery.isError && !authRequired ? (
-              <button className="text-button" onClick={() => projectsQuery.refetch()}>
+              <button
+                className="text-button"
+                onClick={() => projectsQuery.refetch()}
+              >
                 <RotateCcw size={15} /> 重试
               </button>
             ) : null}
@@ -202,7 +270,9 @@ export function Dashboard() {
               </Link>
             </div>
           ) : null}
-          {!projectsQuery.isLoading && !projectsQuery.isError && projectsQuery.data?.length === 0 ? (
+          {!projectsQuery.isLoading &&
+          !projectsQuery.isError &&
+          projectsQuery.data?.length === 0 ? (
             <div className="projects-state empty">
               <Sparkles size={25} />
               <div>
@@ -214,16 +284,27 @@ export function Dashboard() {
           {projectsQuery.data?.length ? (
             <div className="project-grid">
               {projectsQuery.data.map((project) => (
-                <Link key={project.id} href={`/projects/${project.id}`} className="project-card">
+                <Link
+                  key={project.id}
+                  href={`/projects/${project.id}`}
+                  className="project-card"
+                >
                   <div className="project-card-top">
                     <span className="project-icon">
                       <FolderKanban size={18} />
                     </span>
-                    <span className={`status-dot ${project.status}`} aria-label={project.status} />
+                    <span
+                      className={`status-dot ${project.status}`}
+                      aria-label={project.status}
+                    />
                   </div>
                   <div>
                     <h3>{project.name}</h3>
-                    <p>{project.defaultMode === "team" ? "Team Mode" : "Engineer Mode"}</p>
+                    <p>
+                      {project.defaultMode === "team"
+                        ? "Team Mode"
+                        : "Engineer Mode"}
+                    </p>
                   </div>
                   <small>{relativeTime(project.updatedAt)}</small>
                 </Link>
