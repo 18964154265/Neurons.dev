@@ -56,16 +56,56 @@ function instructionsFor(
 }
 
 function defineAgent(
-  definition: Omit<AgentDefinition, "instructions" | "tools">,
+  definition: Omit<AgentDefinition, "instructions" | "tools"> & {
+    tools?: AgentDefinition["tools"];
+  },
 ): AgentDefinition {
+  const { tools = [], ...metadata } = definition;
   return {
-    ...definition,
-    instructions: instructionsFor(definition),
+    ...metadata,
+    instructions: instructionsFor(metadata),
     // Displayed capabilities never grant executable tool permissions. The tool
     // registry injects concrete, policy-checked tools into a run separately.
-    tools: [],
+    tools,
   };
 }
+
+const alexWorkspaceTools: AgentDefinition["tools"] = [
+  {
+    name: "workspace_list_files",
+    description: "列出当前项目中已经持久化的文本文件及其 revision。",
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "workspace_read_file",
+    description:
+      "读取当前项目中的一个文本文件。路径必须来自项目根目录的相对路径。",
+    parameters: {
+      type: "object",
+      properties: { path: { type: "string", minLength: 1, maxLength: 240 } },
+      required: ["path"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "workspace_write_file",
+    description:
+      "创建或完整覆盖一个项目文本文件。生成或修改代码时必须调用此工具，不能只在聊天中输出代码块。",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", minLength: 1, maxLength: 240 },
+        content: { type: "string", maxLength: 262144 },
+      },
+      required: ["path", "content"],
+      additionalProperties: false,
+    },
+  },
+];
 
 export const agentDefinitions: readonly AgentDefinition[] = [
   defineAgent({
@@ -236,6 +276,7 @@ export const agentDefinitions: readonly AgentDefinition[] = [
       "测试与构建",
       "部署准备",
     ],
+    tools: alexWorkspaceTools,
   }),
   defineAgent({
     key: "david",

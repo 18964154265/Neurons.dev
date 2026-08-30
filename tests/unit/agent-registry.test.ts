@@ -36,11 +36,20 @@ describe("agent registry", () => {
     ]);
     for (const definition of agentDefinitions) {
       expect(definition.toolLabels.length).toBeGreaterThan(0);
-      expect(definition.tools).toEqual([]);
       expect(definition.instructions).toContain("不得声称已修改文件");
       expect(definition.instructions).toContain(
         "用户指定的 Agent 和任务范围优先于默认调度",
       );
     }
+    expect(resolveEngineerDefinition().tools.map((tool) => tool.name)).toEqual([
+      "workspace_list_files",
+      "workspace_read_file",
+      "workspace_write_file",
+    ]);
+    expect(
+      agentDefinitions
+        .filter((definition) => definition.key !== "alex")
+        .every((definition) => definition.tools.length === 0),
+    ).toBe(true);
   });
 });

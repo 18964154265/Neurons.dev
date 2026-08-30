@@ -64,11 +64,12 @@ cp .env.example .env
 202608300001_agent_definitions.sql
 202608300002_fix_run_cancel_ambiguity.sql
 202608300003_backfill_default_agent_assignments.sql
+202608300004_project_files.sql
 ```
 
 可以在 Supabase Dashboard 的 SQL Editor 中逐个执行。也可以使用 Supabase CLI 对远程数据库执行迁移；无论使用哪种方式，都不要把连接串写入仓库或终端日志。
 
-最新的 `agent_definitions` 迁移会写入 Mike、Emma、Bob、Alex 和 David 的安全展示投影。服务端权威配置仍位于 [`lib/agents/registry.ts`](./lib/agents/registry.ts)，数据库中的能力标签不代表可执行 Tool 权限。
+`agent_definitions` 迁移会写入 Mike、Emma、Bob、Alex 和 David 的安全展示投影。服务端权威配置仍位于 [`lib/agents/registry.ts`](./lib/agents/registry.ts)，数据库中的能力标签不代表可执行 Tool 权限。`project_files` 迁移为 Alex 的受控 Workspace 文件工具和右侧 Editor 提供持久文件投影。
 
 ### 5. 配置 Supabase Auth
 

@@ -175,7 +175,10 @@ export async function completeEngineerRun(
         ${run.projectId}::uuid, ${run.runId}::uuid, ${engineer.key},
         ${Number(completedRun.last_event_sequence)}, 'model.completed', 'completed',
         'Alex 已完成本轮响应',
-        ${transaction.json({ usage: output.usage, toolCalls: output.toolCalls })}
+        ${transaction.json({
+          usage: output.usage,
+          toolCalls: output.toolCalls.map(({ id, name }) => ({ id, name })),
+        })}
       )
     `;
     await transaction`

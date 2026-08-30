@@ -1,0 +1,32 @@
+{
+  "endpoint": "GET /api/v1/projects/:projectId/files",
+  "test_cases": [
+    {
+      "description": "项目所有者读取 Agent 已生成的文件",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "data": [
+          {
+            "path": "app/page.tsx",
+            "language": "typescript",
+            "revision": 1,
+            "sourceAgentKey": "alex"
+          }
+        ]
+      }
+    },
+    {
+      "description": "非项目所有者无法读取文件",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 200,
+      "expectedBody": { "data": [] }
+    },
+    {
+      "description": "未登录用户读取文件",
+      "projectId": "42f29514-e149-413e-81ff-d3426a8dfe1c",
+      "expectedStatus": 401,
+      "expectedErrorCode": "AUTH_REQUIRED"
+    }
+  ]
+}

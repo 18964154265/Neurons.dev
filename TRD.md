@@ -446,6 +446,14 @@ P0 一个项目只有一个连续主对话；未来如 PRD 确认多会话，可
 - `approval_status`
 - `started_at`, `completed_at`, `duration_ms`, `error_code`
 
+#### `project_files`
+
+- `project_id + path` 为主键；`path` 是经过校验、最长 240 字符的项目相对路径。
+- `content` 保存当前 P0 文本文件内容，单文件最大 256 KiB；二进制文件不得进入该表。
+- `language`, `revision`, `checksum` 支持 Monaco 展示和后续乐观并发控制。
+- `source_run_id`, `source_agent_key` 记录最近写入来源，供 Follow 定位和审计。
+- 当前它是 Sandbox 接入前的持久 Workspace 文件事实来源。Phase 2 接入 Sandbox 后，必须通过 Workspace Adapter 同步，不能形成两个互相冲突的当前版本。
+
 #### `sandbox_sessions`
 
 - `id`, `project_id`, `provider_sandbox_id`
@@ -600,8 +608,8 @@ none → starting → ready
 | `POST`  | `/api/v1/runs/:id/retry`          | 从失败 Run 创建新 Run                    |
 | `GET`   | `/api/v1/runs/:id/events?after=`  | 按 Sequence 补拉 Trace/状态事件          |
 | `GET`   | `/api/v1/runs/:id/trace/:eventId` | 获取已脱敏完整详情                       |
-| `GET`   | `/api/v1/projects/:id/files`      | 文件树或文件内容                         |
-| `PUT`   | `/api/v1/projects/:id/files`      | 用户保存文件，带版本 revision            |
+| `GET`   | `/api/v1/projects/:id/files`      | 当前已实现：返回持久文本文件与 revision  |
+| `PUT`   | `/api/v1/projects/:id/files`      | 待实现：用户保存文件，带 baseRevision    |
 | `GET`   | `/api/v1/projects/:id/terminal`   | Terminal Session 和输出补拉              |
 | `GET`   | `/api/v1/projects/:id/preview`    | 当前与最近成功 Preview 信息              |
 | `GET`   | `/api/v1/projects/:id/versions`   | 版本列表                                 |
@@ -735,26 +743,24 @@ Agent 定义引用 `model_key`，Run 保存解析后的配置快照。模型切�
 
 ### 13.1 Agent Definition
 
-Agent 定义在服务端版本化注册表中，建议接口：
+Agent 定义在服务端版本化注册表中，当前接口为：
 
 ```ts
 type AgentDefinition = {
   key: string;
   version: number;
-  display: {
-    name: string;
-    description: string;
-    avatar: string;
-  };
-  modelKey: string;
-  instructionTemplateRef: string;
-  allowedToolKeys: string[];
+  displayName: string;
+  role: string;
+  description: string;
+  goals: string[];
   capabilities: string[];
-  limits: {
-    maxTurns: number;
-    maxToolCalls: number;
-    maxRunMs: number;
-  };
+  outputFocus: string[];
+  boundaries: string[];
+  handoffs: Partial<Record<AgentKey, string>>;
+  toolLabels: string[];
+  instructions: string;
+  model?: string;
+  tools: LLMTool[];
 };
 ```
 
@@ -764,6 +770,67 @@ type AgentDefinition = {
 - 已运行任务始终引用具体 `key + version`，定义升级不改变历史。
 
 首版稳定 Agent Key 为：`mike`、`emma`、`bob`、`alex`、`david`。Engineer Mode 固定解析 `alex`；Team Mode 固定由 `mike` 负责调度。默认调度阶段定义在 `defaultScheduleRules`，用户指定模式只允许使用请求中的 Agent Key。
+
+#### 13.1.1 配置层级与当前接入状态
+
+- `capabilities` 是调度和职责描述，不直接授予权限。
+- `toolLabels` 是安全的 UI 展示文案，不代表工具已经可以执行。
+- `tools` 才是发送给模型的可执行 Tool Allowlist；调用还必须通过服务端 Tool Executor 的名称、Schema、项目范围和副作用检查。
+- 五个 Agent 当前均使用定义版本 `1`，未设置 Agent 级 `model`，因此统一继承 `OPENROUTER_DEFAULT_MODEL`。
+- 当前持久 Workflow 只实现 Engineer Mode 的 Alex。Team Mode 的角色、默认任务图和投影已经定义，但多 Agent Scheduler/Executor 尚未接入；执行器会以 `TEAM_MODE_NOT_CONFIGURED` 安全失败，不得把展示配置描述为已经执行。
+- 当前 Tool Loop 最多 8 个模型回合；每次模型调用只对明确的瞬时 Provider 错误重试 3 次。单个 Workspace 文本文件最大 256 KiB，路径必须是项目根目录下的规范相对路径。
+
+#### 13.1.2 Mike — Team Lead（`mike@1`）
+
+- 描述：理解用户目标，拆分任务并协调团队交付。
+- 核心目标：判断任务规模和领域；生成最小任务图；选择 Agent；管理依赖、顺序、失败重试和汇总；向用户解释当前负责人和原因。
+- 能力标识：`project_context`、`agent_orchestration`、`workflow_state`、`result_synthesis`、`user_decision`。
+- 输出重点：任务图、Agent 分工、依赖与顺序、执行状态、最终汇总。
+- 行为边界：默认不写业务代码；不和专业 Agent 重复执行；不创建新 Agent；严格尊重用户指定 Agent；并行任务不得发生文件写冲突。
+- 固定交接：需求不清楚 → Emma；架构或数据库 → Bob；功能或 Bug → Alex；测试、数据验证或验收 → David。
+- 展示工具标签：项目上下文读取、Agent 分配和取消、工作流状态管理、结果汇总、请求关键决策。
+- 当前可执行工具：无；Team Mode Executor 尚未接入。
+
+#### 13.1.3 Emma — Product & Research（`emma@1`）
+
+- 描述：把模糊想法整理成清晰、可实现、可验收的产品需求。
+- 核心目标：理解用户、场景和目标；梳理范围、流程与验收标准；按需研究；负责界面文案、基础内容策略和基础 SEO。
+- 能力标识：`web_research`、`project_docs`、`product_requirements`、`preview_review`、`product_ux`。
+- 输出重点：用户目标、功能范围、用户流程、验收标准、待确认问题、给 Bob 或 Alex 的交接摘要。
+- 行为边界：不决定底层架构；默认不改业务代码；不把未验证研究结论当事实；不擅自扩大范围。
+- 展示工具标签：Web Research、项目文档读取、PRD 和用户故事、Preview 页面观察、产品与 UX 分析。
+- 当前可执行工具：无；Research、文档与 Preview Tool 尚未接入。
+
+#### 13.1.4 Bob — System Architect（`bob@1`）
+
+- 描述：将产品需求转换成安全、清晰、可实现的技术方案。
+- 核心目标：设计前后端边界、数据模型和接口；规划 Agent、事件、Trace、Sandbox；识别安全、权限、性能和一致性风险；为 Alex 提供适度方案。
+- 能力标识：`repository_analysis`、`database_design`、`api_events`、`auth_rls`、`technical_research`、`architecture_risk`。
+- 输出重点：技术决策、模块边界、数据结构、API/事件契约、安全要求、实现顺序。
+- 行为边界：不过度设计；默认不承担大量业务实现；不绕过安全或审批；决策必须追溯到需求。
+- 展示工具标签：代码库与依赖分析、数据库 Schema 设计、API 与事件协议设计、Auth/RLS 检查、技术文档检索、架构风险分析。
+- 当前可执行工具：无；只读 Repository、Schema 和技术检索 Tool 尚未接入。
+
+#### 13.1.5 Alex — Full-stack Engineer（`alex@1`）
+
+- 描述：负责真正编写、运行、修复和交付应用。
+- 核心目标：按需求和架构实现；操作文件、终端和 Preview；修复 Bug 并保持项目可运行；在 Engineer Mode 独立完成理解、实现、验证和汇报。
+- 能力标识：`file_operations`、`terminal`、`browser_preview`、`fullstack`、`supabase`、`testing_build`、`deployment_preparation`。
+- 输出重点：实现结果、文件变更、验证证据、风险、未完成项。
+- 行为边界：默认是生产代码唯一主要写入者；不输出密钥；不伪造验证；危险操作、生产迁移和 Publish 需审批；遇到需求/架构矛盾时暂停；Engineer Mode 不隐式调用其他 Agent。
+- 展示工具标签：文件读写、Terminal、浏览器与 Web Preview、前后端开发、Supabase、测试与构建、部署准备。
+- 当前可执行工具：`workspace_list_files`、`workspace_read_file`、`workspace_write_file`。写入持久化到 `project_files`，生成 `tool_invocations` 与 `file.saved` Trace，并由 Editor 实时/轮询展示。
+- 尚未接入：Sandbox 文件系统同步、Patch/Diff、Terminal、Preview、Validation、Supabase 管理、部署与 Publish Tool。因此 Alex 不能声称已经运行、构建、预览或部署仅写入 Editor 的文件。
+
+#### 13.1.6 David — Quality & Data Engineer（`david@1`）
+
+- 描述：用测试和证据判断产品是否真正可用。
+- 核心目标：按验收标准验证；检查数据库、权限、持久化和异常；执行类型/自动化/用户流程检查；分析 Trace 与日志；向 Alex 提供可复现缺陷。
+- 能力标识：`playwright`、`automated_testing`、`typecheck_build`、`database_readonly`、`trace_logs`、`preview_acceptance`。
+- 输出重点：验证范围、通过项、失败项、复现步骤、证据、风险和发布建议。
+- 行为边界：不把页面打开当作完成；不改生产数据；默认不重写业务实现；只有明确分配时补测试代码；无法验证必须标记。
+- 展示工具标签：Playwright、单元与集成测试、类型检查和构建、数据库只读检查、Trace/日志分析、Preview 验收。
+- 当前可执行工具：无；Validation、数据库只读、Trace 和 Preview Tool 尚未接入。
 
 ### 13.2 Engineer Mode
 
@@ -1249,7 +1316,7 @@ users/{userId}/projects/{projectId}/
 - OpenAI SDK → OpenRouter 文本流。
 - Workflow 持久运行、Message/Trace/Outbox。
 - Realtime + Cursor 补拉。
-- Engineer Mode 使用临时测试 Agent Definition；不得伪装为最终 Agent 设计。
+- Engineer Mode 使用已确认的 `alex@1`；未接入的 Tool 能力必须明确显示为不可用。
 
 ### Phase 2：Sandbox 与统一画布
 
@@ -1275,13 +1342,15 @@ users/{userId}/projects/{projectId}/
 
 ## 26. 待确认项
 
-### 26.1 阻止 Agent 生产配置的事项
+### 26.1 Agent 配置后续事项
 
-1. Agent 数量、Key、名称、描述、头像和职责。
-2. 每个 Agent 的 Prompt、默认模型、Tool Allowlist 和运行限制。
-3. Engineer Mode 默认 Agent。
-4. Team Mode 的 Scheduler 规则、汇总 Agent 和并行边界。
-5. OpenRouter 默认模型及备用模型策略。
+以下事项不再阻止 Engineer Mode 的 Workspace 文件闭环，但会阻止相应能力被标记为可用：
+
+1. 五个 Agent 的头像资源。
+2. Mike、Emma、Bob、David 的可执行 Tool Allowlist、Schema、权限和限制。
+3. Alex 的 Sandbox、Terminal、Preview、Validation、Supabase 和部署 Tool。
+4. Team Mode Scheduler/Executor、交接产物协议、汇总步骤和并行锁实现。
+5. Agent 级模型覆盖、OpenRouter 备用模型及能力路由策略。
 
 ### 26.2 产品与交互事项
 

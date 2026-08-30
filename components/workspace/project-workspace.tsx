@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Editor from "@monaco-editor/react";
 import {
   ArrowUp,
   AlertTriangle,
@@ -60,6 +61,17 @@ type TraceEvent = {
   created_at: string;
 };
 
+type ProjectFile = {
+  path: string;
+  content: string;
+  language: string;
+  revision: number;
+  checksum: string;
+  sourceRunId: string | null;
+  sourceAgentKey: string | null;
+  updatedAt: string;
+};
+
 const views: Array<{ key: CanvasView; label: string; icon: React.ReactNode }> =
   [
     { key: "editor", label: "Editor", icon: <Code2 size={15} /> },
@@ -80,6 +92,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [modeOverride, setModeOverride] = useState<"engineer" | "team" | null>(
     null,
   );
@@ -87,6 +100,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     "automatic" | "user_selected" | null
   >(null);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
 
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
@@ -105,9 +119,16 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     queryFn: () =>
       apiRequest<AgentInfo[]>(`/api/v1/projects/${projectId}/agents`),
   });
+  const filesQuery = useQuery({
+    queryKey: ["files", projectId],
+    queryFn: () =>
+      apiRequest<ProjectFile[]>(`/api/v1/projects/${projectId}/files`),
+    refetchInterval: () => (projectQuery.data?.activeRunId ? 750 : false),
+  });
 
   const activeRunId = projectQuery.data?.activeRunId ?? null;
-  const observedRunId = activeRunId ?? projectQuery.data?.latestRunId ?? null;
+  const observedRunId =
+    activeRunId ?? selectedRunId ?? projectQuery.data?.latestRunId ?? null;
   const runQuery = useQuery({
     queryKey: ["run", observedRunId],
     queryFn: () => apiRequest<AgentRun>(`/api/v1/runs/${observedRunId}`),
@@ -195,12 +216,25 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         () =>
           queryClient.invalidateQueries({ queryKey: ["agents", projectId] }),
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "project_files",
+          filter: `project_id=eq.${projectId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["files", projectId] });
+          if (follow) setView("editor");
+        },
+      )
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [projectId, queryClient]);
+  }, [follow, projectId, queryClient]);
 
   useEffect(() => {
     if (!observedRunId || runQuery.data?.lastEventSequence === undefined)
@@ -226,6 +260,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       ),
     onSuccess: async () => {
       setPrompt("");
+      setSelectedRunId(null);
+      setSelectedTraceId(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["messages", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
@@ -253,6 +289,38 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       null
     );
   }, [eventsQuery.data, selectedTraceId, view]);
+  const traceRuns = useMemo(() => {
+    const seen = new Set<string>();
+    return [...(messagesQuery.data ?? [])]
+      .reverse()
+      .filter((message) => {
+        if (message.role !== "assistant" || !message.runId) return false;
+        if (seen.has(message.runId)) return false;
+        seen.add(message.runId);
+        return true;
+      })
+      .map((message) => ({
+        runId: message.runId!,
+        sequence: message.sequence,
+        agentKey: message.agentKey ?? "Agent",
+      }));
+  }, [messagesQuery.data]);
+  const selectedFile = useMemo(() => {
+    const files = filesQuery.data ?? [];
+    const latestRunFile = follow
+      ? files
+          .filter((file) => file.sourceRunId === observedRunId)
+          .sort((left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt),
+          )[0]
+      : null;
+    return (
+      latestRunFile ??
+      files.find((file) => file.path === selectedFilePath) ??
+      files[0] ??
+      null
+    );
+  }, [filesQuery.data, follow, observedRunId, selectedFilePath]);
 
   if (projectQuery.isLoading) {
     return (
@@ -298,6 +366,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         ? message.content.eventId
         : null;
     setSelectedTraceId(eventId);
+    if (message.runId) setSelectedRunId(message.runId);
     setView("trace");
     setFollow(false);
   }
@@ -396,12 +465,15 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 content={messageText(message)}
                 streaming={message.status === "streaming"}
               />
-              {["thought_summary", "tool_summary"].includes(message.kind) ? (
+              {message.role === "assistant" && message.runId ? (
                 <button
                   className="trace-link"
                   onClick={() => openTrace(message)}
                 >
-                  <Braces size={14} /> 在 Trace 中查看
+                  <Braces size={14} />
+                  {["thought_summary", "tool_summary"].includes(message.kind)
+                    ? "在 Trace 中查看"
+                    : "查看本轮 Trace"}
                 </button>
               ) : null}
             </article>
@@ -625,15 +697,56 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 <div className="file-tree-title">
                   EXPLORER <ChevronDown size={13} />
                 </div>
-                <div className="empty-tree">
-                  项目文件会在 Sandbox 启动后出现
-                </div>
+                {filesQuery.isLoading ? (
+                  <div className="empty-tree">正在加载项目文件…</div>
+                ) : null}
+                {(filesQuery.data ?? []).map((file) => (
+                  <button
+                    key={file.path}
+                    className={`file-tree-item ${selectedFile?.path === file.path ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedFilePath(file.path);
+                      setFollow(false);
+                    }}
+                    title={`${file.path} · revision ${file.revision}`}
+                  >
+                    <FileCode2 size={14} />
+                    <span>{file.path}</span>
+                  </button>
+                ))}
+                {!filesQuery.isLoading && filesQuery.data?.length === 0 ? (
+                  <div className="empty-tree">
+                    Alex 写入项目文件后会显示在这里
+                  </div>
+                ) : null}
               </aside>
-              <div className="editor-empty canvas-empty">
-                <FileCode2 size={28} />
-                <strong>还没有打开文件</strong>
-                <p>开启跟随后，Agent 的真实文件操作会自动定位到这里。</p>
-              </div>
+              {selectedFile ? (
+                <section className="monaco-pane">
+                  <div className="editor-filebar">
+                    <span>{selectedFile.path}</span>
+                    <small>revision {selectedFile.revision}</small>
+                  </div>
+                  <Editor
+                    path={selectedFile.path}
+                    language={selectedFile.language}
+                    value={selectedFile.content}
+                    theme="vs"
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: true },
+                      automaticLayout: true,
+                      fontSize: 14,
+                      scrollBeyondLastLine: false,
+                    }}
+                  />
+                </section>
+              ) : (
+                <div className="editor-empty canvas-empty">
+                  <FileCode2 size={28} />
+                  <strong>还没有打开文件</strong>
+                  <p>开启跟随后，Agent 的文件写入会自动定位到这里。</p>
+                </div>
+              )}
             </div>
           ) : null}
           {view === "terminal" ? (
@@ -667,6 +780,26 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             <div className="trace-surface">
               <aside className="trace-list">
                 <div className="trace-list-title">RUN TRACE</div>
+                {traceRuns.length ? (
+                  <label className="trace-run-picker">
+                    <span>执行轮次</span>
+                    <select
+                      value={observedRunId ?? ""}
+                      onChange={(event) => {
+                        setSelectedRunId(event.target.value);
+                        setSelectedTraceId(null);
+                      }}
+                      disabled={Boolean(activeRunId)}
+                    >
+                      {traceRuns.map((run, index) => (
+                        <option key={run.runId} value={run.runId}>
+                          {index === 0 ? "最新 · " : ""}
+                          {run.agentKey} 回复 #{run.sequence}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 {eventsQuery.isLoading ||
                 (eventsQuery.isFetching && !eventsQuery.data?.length) ? (
                   <p className="muted">加载中…</p>

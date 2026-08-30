@@ -32,6 +32,10 @@ const defaultAssignmentsMigration = readFileSync(
   ),
   "utf8",
 );
+const projectFilesMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/202608300004_project_files.sql"),
+  "utf8",
+);
 
 describe("initial database migration", () => {
   it.each([
@@ -108,6 +112,21 @@ describe("initial database migration", () => {
     expect(defaultAssignmentsMigration).toContain("else 'mike'");
     expect(defaultAssignmentsMigration).toContain(
       "insert into public.project_agent_assignments",
+    );
+  });
+
+  it("creates an owner-readable realtime project file projection", () => {
+    expect(projectFilesMigration).toContain(
+      "create table public.project_files",
+    );
+    expect(projectFilesMigration).toContain(
+      "alter table public.project_files enable row level security",
+    );
+    expect(projectFilesMigration).toContain(
+      "private.is_project_owner(project_id)",
+    );
+    expect(projectFilesMigration).toContain(
+      "alter publication supabase_realtime add table public.project_files",
     );
   });
 });
