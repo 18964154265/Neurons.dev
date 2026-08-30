@@ -2,8 +2,14 @@ import { createHash } from "node:crypto";
 
 import type { z } from "zod";
 
+import { resolveAgentKeysForRun } from "@/lib/agents/scheduling";
+
 import type { ProjectRepository } from "./repository";
-import { createProjectSchema, defaultProjectName, updateProjectSchema } from "./schemas";
+import {
+  createProjectSchema,
+  defaultProjectName,
+  updateProjectSchema,
+} from "./schemas";
 
 type CreateProjectInput = z.infer<typeof createProjectSchema>;
 type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
@@ -23,11 +29,15 @@ export class ProjectService {
   constructor(private readonly repository: ProjectRepository) {}
 
   create(input: CreateProjectInput, idempotencyKey: string) {
-    return this.repository.create({
+    const normalizedInput = {
       ...input,
+      agentKeys: resolveAgentKeysForRun(input),
+    };
+    return this.repository.create({
+      ...normalizedInput,
       name: input.name ?? defaultProjectName(input.initialMessage),
       clientRequestId: idempotencyKey,
-      requestHash: stableRequestHash(input),
+      requestHash: stableRequestHash(normalizedInput),
     });
   }
 
@@ -41,5 +51,9 @@ export class ProjectService {
 
   update(projectId: string, input: UpdateProjectInput) {
     return this.repository.update(projectId, input.revision, input);
+  }
+
+  archive(projectId: string, revision: number) {
+    return this.repository.archive(projectId, revision);
   }
 }

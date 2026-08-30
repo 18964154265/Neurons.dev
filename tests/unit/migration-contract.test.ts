@@ -18,6 +18,20 @@ const agentDefinitionsMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/202608300001_agent_definitions.sql"),
   "utf8",
 );
+const cancelAmbiguityMigration = readFileSync(
+  join(
+    process.cwd(),
+    "supabase/migrations/202608300002_fix_run_cancel_ambiguity.sql",
+  ),
+  "utf8",
+);
+const defaultAssignmentsMigration = readFileSync(
+  join(
+    process.cwd(),
+    "supabase/migrations/202608300003_backfill_default_agent_assignments.sql",
+  ),
+  "utf8",
+);
 
 describe("initial database migration", () => {
   it.each([
@@ -64,11 +78,36 @@ describe("initial database migration", () => {
     expect(cancelMigration).toContain("'workflow.start_failed'");
   });
 
+  it("uses named constraints in cancellation functions to avoid PL/pgSQL ambiguity", () => {
+    expect(cancelAmbiguityMigration).toContain(
+      "on conflict on constraint outbox_events_run_id_sequence_key",
+    );
+    expect(cancelAmbiguityMigration).toContain(
+      "on conflict on constraint trace_events_run_id_sequence_key",
+    );
+    expect(cancelAmbiguityMigration).not.toContain(
+      "on conflict (run_id, sequence)",
+    );
+    expect(cancelAmbiguityMigration).toContain(
+      "where message.run_id = p_run_id",
+    );
+  });
+
   it("projects only the five confirmed agent definitions", () => {
     for (const key of ["mike", "emma", "bob", "alex", "david"]) {
       expect(agentDefinitionsMigration).toContain(`'${key}', 1`);
     }
     expect(agentDefinitionsMigration).toContain("where agent_key not in");
     expect(agentDefinitionsMigration).toContain("enabled = false");
+  });
+
+  it("backfills a real default assignment for existing projects", () => {
+    expect(defaultAssignmentsMigration).toContain(
+      "when project.default_mode = 'engineer' then 'alex'",
+    );
+    expect(defaultAssignmentsMigration).toContain("else 'mike'");
+    expect(defaultAssignmentsMigration).toContain(
+      "insert into public.project_agent_assignments",
+    );
   });
 });

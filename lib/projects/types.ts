@@ -6,6 +6,7 @@ export type ProjectSummary = {
   defaultMode: "engineer" | "team";
   defaultScheduleStrategy: "automatic" | "user_selected";
   activeRunId: string | null;
+  latestRunId: string | null;
   latestSuccessfulVersionId: string | null;
   revision: number;
   createdAt: string;

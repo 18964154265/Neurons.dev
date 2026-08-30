@@ -51,6 +51,7 @@ function mapProject(row: ProjectRow): ProjectSummary {
     defaultMode: row.default_mode,
     defaultScheduleStrategy: row.default_schedule_strategy,
     activeRunId: row.active_run_id,
+    latestRunId: null,
     latestSuccessfulVersionId: row.latest_successful_version_id,
     revision: row.revision,
     createdAt: row.created_at,
@@ -81,14 +82,29 @@ export class ProjectRepository {
         );
       }
       if (error.message.includes("UNKNOWN_OR_DISABLED_AGENT")) {
-        throw new ApiError("INVALID_AGENT", 400, "选择了不可用的 Agent。", false);
+        throw new ApiError(
+          "INVALID_AGENT",
+          400,
+          "选择了不可用的 Agent。",
+          false,
+        );
       }
-      throw new ApiError("PROJECT_CREATE_FAILED", 500, "项目创建失败，请重试。", true);
+      throw new ApiError(
+        "PROJECT_CREATE_FAILED",
+        500,
+        "项目创建失败，请重试。",
+        true,
+      );
     }
 
     const row = (data as Array<Record<string, unknown>> | null)?.[0];
     if (!row) {
-      throw new ApiError("PROJECT_CREATE_FAILED", 500, "项目创建失败，请重试。", true);
+      throw new ApiError(
+        "PROJECT_CREATE_FAILED",
+        500,
+        "项目创建失败，请重试。",
+        true,
+      );
     }
 
     return {
@@ -109,7 +125,12 @@ export class ProjectRepository {
       .limit(limit);
 
     if (error) {
-      throw new ApiError("PROJECT_LIST_FAILED", 500, "项目列表加载失败。", true);
+      throw new ApiError(
+        "PROJECT_LIST_FAILED",
+        500,
+        "项目列表加载失败。",
+        true,
+      );
     }
     return ((data ?? []) as unknown as ProjectRow[]).map(mapProject);
   }
@@ -126,9 +147,28 @@ export class ProjectRepository {
       throw new ApiError("PROJECT_READ_FAILED", 500, "项目加载失败。", true);
     }
     if (!data) {
-      throw new ApiError("PROJECT_NOT_FOUND", 404, "项目不存在或无权访问。", false);
+      throw new ApiError(
+        "PROJECT_NOT_FOUND",
+        404,
+        "项目不存在或无权访问。",
+        false,
+      );
     }
-    return mapProject(data as unknown as ProjectRow);
+    const { data: latestRun, error: latestRunError } = await this.supabase
+      .from("agent_runs")
+      .select("id")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestRunError) {
+      throw new ApiError("PROJECT_READ_FAILED", 500, "项目加载失败。", true);
+    }
+
+    return {
+      ...mapProject(data as unknown as ProjectRow),
+      latestRunId: latestRun ? String(latestRun.id) : null,
+    };
   }
 
   async update(
@@ -142,7 +182,8 @@ export class ProjectRepository {
   ): Promise<ProjectSummary> {
     const payload: Record<string, unknown> = { revision: revision + 1 };
     if (changes.name !== undefined) payload.name = changes.name;
-    if (changes.defaultMode !== undefined) payload.default_mode = changes.defaultMode;
+    if (changes.defaultMode !== undefined)
+      payload.default_mode = changes.defaultMode;
     if (changes.defaultScheduleStrategy !== undefined) {
       payload.default_schedule_strategy = changes.defaultScheduleStrategy;
     }
@@ -168,5 +209,33 @@ export class ProjectRepository {
       );
     }
     return mapProject(data as unknown as ProjectRow);
+  }
+
+  async archive(projectId: string, revision: number) {
+    const { data, error } = await this.supabase
+      .from("projects")
+      .update({
+        archived_at: new Date().toISOString(),
+        revision: revision + 1,
+      })
+      .eq("id", projectId)
+      .eq("revision", revision)
+      .is("active_run_id", null)
+      .is("archived_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      throw new ApiError("PROJECT_ARCHIVE_FAILED", 500, "项目删除失败。", true);
+    }
+    if (!data) {
+      throw new ApiError(
+        "PROJECT_ARCHIVE_CONFLICT",
+        409,
+        "项目正在执行任务或已发生变化，请刷新后重试。",
+        false,
+      );
+    }
+    return { projectId: String(data.id), archived: true as const };
   }
 }

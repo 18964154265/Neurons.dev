@@ -3,7 +3,8 @@
     "description": "Owner 可以读取自己的项目",
     "method": "GET",
     "params": { "projectId": "00000000-0000-4000-8000-000000000001" },
-    "expectedStatus": 200
+    "expectedStatus": 200,
+    "expected": { "latestRunId": "00000000-0000-4000-8000-000000000010" }
   },
   {
     "description": "非 Owner 得到统一的项目不存在响应",
@@ -19,5 +20,21 @@
     "body": { "name": "New name", "revision": 1 },
     "expectedStatus": 409,
     "expectedError": "PROJECT_REVISION_CONFLICT"
+  },
+  {
+    "description": "项目空闲时执行软删除",
+    "method": "DELETE",
+    "body": { "revision": 2 },
+    "expectedStatus": 200,
+    "expected": { "archived": true },
+    "expectedSideEffects": ["projects.archived_at"]
+  },
+  {
+    "description": "项目存在活跃 Run 时拒绝删除",
+    "method": "DELETE",
+    "body": { "revision": 2 },
+    "fixture": { "activeRun": true },
+    "expectedStatus": 409,
+    "expectedError": "PROJECT_ARCHIVE_CONFLICT"
   }
 ]

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 
+import { resolveAgentKeysForRun } from "@/lib/agents/scheduling";
 import { ApiError } from "@/lib/http/errors";
 
 import type { sendMessageSchema } from "./schemas";
@@ -16,7 +17,13 @@ export type ConversationMessage = {
   agentKey: string | null;
   sequence: number;
   role: "user" | "assistant" | "system_event";
-  kind: "text" | "thought_summary" | "tool_summary" | "status" | "error" | "approval";
+  kind:
+    | "text"
+    | "thought_summary"
+    | "tool_summary"
+    | "status"
+    | "error"
+    | "approval";
   status: "pending" | "streaming" | "completed" | "failed" | "cancelled";
   content: Record<string, unknown>;
   createdAt: string;
@@ -36,15 +43,23 @@ function requestHash(input: SendMessageInput) {
 export class ChatRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
-  async send(projectId: string, input: SendMessageInput, idempotencyKey: string) {
+  async send(
+    projectId: string,
+    input: SendMessageInput,
+    idempotencyKey: string,
+  ) {
+    const normalizedInput = {
+      ...input,
+      agentKeys: resolveAgentKeysForRun(input),
+    };
     const { data, error } = await this.supabase.rpc("append_message_with_run", {
       p_project_id: projectId,
-      p_message: input.message,
-      p_mode: input.mode,
-      p_schedule_strategy: input.scheduleStrategy,
-      p_agent_keys: input.agentKeys,
+      p_message: normalizedInput.message,
+      p_mode: normalizedInput.mode,
+      p_schedule_strategy: normalizedInput.scheduleStrategy,
+      p_agent_keys: normalizedInput.agentKeys,
       p_client_request_id: idempotencyKey,
-      p_request_hash: requestHash(input),
+      p_request_hash: requestHash(normalizedInput),
     });
 
     if (error) {
@@ -57,17 +72,37 @@ export class ChatRepository {
         );
       }
       if (error.message.includes("PROJECT_NOT_FOUND")) {
-        throw new ApiError("PROJECT_NOT_FOUND", 404, "项目不存在或无权访问。", false);
+        throw new ApiError(
+          "PROJECT_NOT_FOUND",
+          404,
+          "项目不存在或无权访问。",
+          false,
+        );
       }
       if (error.message.includes("IDEMPOTENCY_KEY_REUSED")) {
-        throw new ApiError("IDEMPOTENCY_CONFLICT", 409, "幂等键已用于其他消息。", false);
+        throw new ApiError(
+          "IDEMPOTENCY_CONFLICT",
+          409,
+          "幂等键已用于其他消息。",
+          false,
+        );
       }
-      throw new ApiError("MESSAGE_SEND_FAILED", 500, "消息发送失败，请重试。", true);
+      throw new ApiError(
+        "MESSAGE_SEND_FAILED",
+        500,
+        "消息发送失败，请重试。",
+        true,
+      );
     }
 
     const row = (data as Array<Record<string, unknown>> | null)?.[0];
     if (!row) {
-      throw new ApiError("MESSAGE_SEND_FAILED", 500, "消息发送失败，请重试。", true);
+      throw new ApiError(
+        "MESSAGE_SEND_FAILED",
+        500,
+        "消息发送失败，请重试。",
+        true,
+      );
     }
     return {
       messageId: String(row.message_id),
@@ -77,10 +112,16 @@ export class ChatRepository {
     };
   }
 
-  async list(projectId: string, after: number, limit: number): Promise<ConversationMessage[]> {
+  async list(
+    projectId: string,
+    after: number,
+    limit: number,
+  ): Promise<ConversationMessage[]> {
     const { data, error } = await this.supabase
       .from("messages")
-      .select("id,project_id,run_id,agent_key,sequence,role,kind,status,content,created_at")
+      .select(
+        "id,project_id,run_id,agent_key,sequence,role,kind,status,content,created_at",
+      )
       .eq("project_id", projectId)
       .gt("sequence", after)
       .order("sequence", { ascending: true })

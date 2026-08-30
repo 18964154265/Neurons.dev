@@ -184,7 +184,7 @@ begin
   values (
     v_run.project_id, v_run.id, v_event_sequence, 'run.cancelling',
     jsonb_build_object('runId', v_run.id)
-  ) on conflict (run_id, sequence) do nothing;
+  ) on conflict on constraint outbox_events_run_id_sequence_key do nothing;
 
   return query select v_run.id, 'cancelling'::public.run_status, false;
 end;

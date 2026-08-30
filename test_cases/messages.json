@@ -10,7 +10,13 @@
       "agentKeys": []
     },
     "expectedStatus": 202,
-    "expectedSideEffects": ["message", "agent_run", "outbox_event", "workflow_run"]
+    "expectedSideEffects": [
+      "message",
+      "agent_run",
+      "project_agent_assignment:alex",
+      "outbox_event",
+      "workflow_run"
+    ]
   },
   {
     "description": "项目已有活跃 Run 时拒绝并发写入",

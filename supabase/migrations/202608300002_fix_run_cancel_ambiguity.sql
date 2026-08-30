@@ -1,10 +1,7 @@
 begin;
 
-create or replace function public.fail_run_workflow_start(
-  p_run_id uuid,
-  p_failure_code text
-)
-returns void
+create or replace function public.request_run_cancel(p_run_id uuid)
+returns table (run_id uuid, status public.run_status, already_terminal boolean)
 language plpgsql
 security definer
 set search_path = ''
@@ -18,34 +15,32 @@ begin
     raise exception using errcode = '42501', message = 'AUTH_REQUIRED';
   end if;
 
-  select * into v_run
-  from public.agent_runs
+  select * into v_run from public.agent_runs
   where id = p_run_id and owner_id = v_owner_id
   for update;
   if not found then
     raise exception using errcode = 'P0002', message = 'RUN_NOT_FOUND';
   end if;
-  if v_run.status <> 'queued' then
+
+  if v_run.status in ('completed', 'failed', 'cancelled') then
+    return query select v_run.id, v_run.status, true;
     return;
   end if;
 
   update public.agent_runs
-  set status = 'failed', failure_code = left(p_failure_code, 120), completed_at = now(),
+  set cancel_requested_at = coalesce(cancel_requested_at, now()),
+      status = 'cancelling',
       last_event_sequence = last_event_sequence + 1
-  where id = v_run.id
+  where id = p_run_id
   returning last_event_sequence into v_event_sequence;
 
-  insert into public.trace_events (
-    project_id, run_id, sequence, event_type, status, summary, detail
-  ) values (
-    v_run.project_id, v_run.id, v_event_sequence,
-    'workflow.start_failed', 'failed', '任务执行器启动失败',
-    jsonb_build_object('code', left(p_failure_code, 120))
-  );
+  insert into public.outbox_events (project_id, run_id, sequence, event_type, payload)
+  values (
+    v_run.project_id, v_run.id, v_event_sequence, 'run.cancelling',
+    jsonb_build_object('runId', v_run.id)
+  ) on conflict on constraint outbox_events_run_id_sequence_key do nothing;
 
-  update public.projects
-  set active_run_id = null, status = 'failed', revision = revision + 1
-  where id = v_run.project_id and active_run_id = v_run.id;
+  return query select v_run.id, 'cancelling'::public.run_status, false;
 end;
 $$;
 
@@ -103,9 +98,9 @@ begin
 end;
 $$;
 
+revoke all on function public.request_run_cancel(uuid) from public;
+grant execute on function public.request_run_cancel(uuid) to authenticated;
 revoke all on function public.confirm_run_cancelled(uuid) from public;
 grant execute on function public.confirm_run_cancelled(uuid) to authenticated;
-revoke all on function public.fail_run_workflow_start(uuid, text) from public;
-grant execute on function public.fail_run_workflow_start(uuid, text) to authenticated;
 
 commit;

@@ -13,7 +13,10 @@ export const createProjectSchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.scheduleStrategy === "user_selected" && value.agentKeys.length === 0) {
+    if (
+      value.scheduleStrategy === "user_selected" &&
+      value.agentKeys.length === 0
+    ) {
       context.addIssue({
         code: "custom",
         path: ["agentKeys"],
@@ -37,6 +40,10 @@ export const updateProjectSchema = z
       value.defaultScheduleStrategy !== undefined,
     { message: "至少需要修改一个字段。" },
   );
+
+export const archiveProjectSchema = z
+  .object({ revision: z.number().int().positive() })
+  .strict();
 
 export const projectIdSchema = z.string().uuid();
 

@@ -10,7 +10,15 @@
       "agentKeys": []
     },
     "expectedStatus": 201,
-    "expectedSideEffects": ["project", "conversation", "message", "agent_run", "outbox_event", "workflow_run"]
+    "expectedSideEffects": [
+      "project",
+      "conversation",
+      "message",
+      "agent_run",
+      "project_agent_assignment:alex",
+      "outbox_event",
+      "workflow_run"
+    ]
   },
   {
     "description": "重复的相同请求返回原资源",

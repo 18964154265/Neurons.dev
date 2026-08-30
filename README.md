@@ -62,6 +62,8 @@ cp .env.example .env
 202608290002_run_commands.sql
 202608290003_confirm_run_cancel.sql
 202608300001_agent_definitions.sql
+202608300002_fix_run_cancel_ambiguity.sql
+202608300003_backfill_default_agent_assignments.sql
 ```
 
 可以在 Supabase Dashboard 的 SQL Editor 中逐个执行。也可以使用 Supabase CLI 对远程数据库执行迁移；无论使用哪种方式，都不要把连接串写入仓库或终端日志。

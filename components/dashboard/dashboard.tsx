@@ -9,10 +9,14 @@ import {
   LoaderCircle,
   LogIn,
   LogOut,
+  MoreHorizontal,
+  Pencil,
   Plus,
   RotateCcw,
   Sparkles,
+  Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,6 +28,10 @@ import type { CreateProjectResult, ProjectSummary } from "@/lib/projects/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type Mode = "engineer" | "team";
+type ProjectDialog = {
+  kind: "rename" | "delete";
+  project: ProjectSummary;
+};
 
 function relativeTime(value: string) {
   const delta = Date.now() - new Date(value).getTime();
@@ -40,6 +48,11 @@ export function Dashboard() {
   const queryClient = useQueryClient();
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<Mode>("engineer");
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [projectDialog, setProjectDialog] = useState<ProjectDialog | null>(
+    null,
+  );
+  const [projectName, setProjectName] = useState("");
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -77,6 +90,39 @@ export function Dashboard() {
     },
   });
 
+  const renameProject = useMutation({
+    mutationFn: ({
+      project,
+      name,
+    }: {
+      project: ProjectSummary;
+      name: string;
+    }) =>
+      apiRequest<ProjectSummary>(`/api/v1/projects/${project.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name, revision: project.revision }),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setProjectDialog(null);
+    },
+  });
+
+  const archiveProject = useMutation({
+    mutationFn: (project: ProjectSummary) =>
+      apiRequest<{ projectId: string; archived: true }>(
+        `/api/v1/projects/${project.id}`,
+        {
+          method: "DELETE",
+          body: JSON.stringify({ revision: project.revision }),
+        },
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setProjectDialog(null);
+    },
+  });
+
   const authRequired =
     projectsQuery.error instanceof ApiClientError &&
     projectsQuery.error.code === "AUTH_REQUIRED";
@@ -86,6 +132,22 @@ export function Dashboard() {
     const message = prompt.trim();
     if (!message || createProject.isPending) return;
     createProject.mutate(message);
+  }
+
+  function openProjectDialog(
+    kind: ProjectDialog["kind"],
+    project: ProjectSummary,
+  ) {
+    setOpenMenuId(null);
+    setProjectName(project.name);
+    renameProject.reset();
+    archiveProject.reset();
+    setProjectDialog({ kind, project });
+  }
+
+  function closeProjectDialog() {
+    if (renameProject.isPending || archiveProject.isPending) return;
+    setProjectDialog(null);
   }
 
   return (
@@ -284,35 +346,179 @@ export function Dashboard() {
           {projectsQuery.data?.length ? (
             <div className="project-grid">
               {projectsQuery.data.map((project) => (
-                <Link
+                <article
                   key={project.id}
-                  href={`/projects/${project.id}`}
                   className="project-card"
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget)) {
+                      setOpenMenuId((current) =>
+                        current === project.id ? null : current,
+                      );
+                    }
+                  }}
                 >
-                  <div className="project-card-top">
-                    <span className="project-icon">
-                      <FolderKanban size={18} />
-                    </span>
-                    <span
-                      className={`status-dot ${project.status}`}
-                      aria-label={project.status}
-                    />
+                  <Link
+                    href={`/projects/${project.id}`}
+                    className="project-card-link"
+                  >
+                    <div className="project-card-top">
+                      <span className="project-icon">
+                        <FolderKanban size={18} />
+                      </span>
+                      <span
+                        className={`status-dot ${project.status}`}
+                        aria-label={project.status}
+                      />
+                    </div>
+                    <div>
+                      <h3>{project.name}</h3>
+                      <p>
+                        {project.defaultMode === "team"
+                          ? "Team Mode"
+                          : "Engineer Mode"}
+                      </p>
+                    </div>
+                    <small>{relativeTime(project.updatedAt)}</small>
+                  </Link>
+                  <div className="project-card-menu">
+                    <button
+                      className="project-menu-trigger"
+                      aria-label={`${project.name} 项目操作`}
+                      aria-haspopup="menu"
+                      aria-expanded={openMenuId === project.id}
+                      onClick={() =>
+                        setOpenMenuId((current) =>
+                          current === project.id ? null : project.id,
+                        )
+                      }
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+                    {openMenuId === project.id ? (
+                      <div className="project-menu-popover" role="menu">
+                        <button
+                          role="menuitem"
+                          onClick={() => openProjectDialog("rename", project)}
+                        >
+                          <Pencil size={14} /> 重命名
+                        </button>
+                        <button
+                          role="menuitem"
+                          className="danger"
+                          onClick={() => openProjectDialog("delete", project)}
+                        >
+                          <Trash2 size={14} /> 删除
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                  <div>
-                    <h3>{project.name}</h3>
-                    <p>
-                      {project.defaultMode === "team"
-                        ? "Team Mode"
-                        : "Engineer Mode"}
-                    </p>
-                  </div>
-                  <small>{relativeTime(project.updatedAt)}</small>
-                </Link>
+                </article>
               ))}
             </div>
           ) : null}
         </section>
       </section>
+
+      {projectDialog ? (
+        <div className="dialog-backdrop" onMouseDown={closeProjectDialog}>
+          <section
+            className="project-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="project-dialog-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="icon-button dialog-close"
+              aria-label="关闭"
+              onClick={closeProjectDialog}
+            >
+              <X size={17} />
+            </button>
+            {projectDialog.kind === "rename" ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const name = projectName.trim();
+                  if (!name || renameProject.isPending) return;
+                  renameProject.mutate({
+                    project: projectDialog.project,
+                    name,
+                  });
+                }}
+              >
+                <p className="eyebrow">PROJECT SETTINGS</p>
+                <h2 id="project-dialog-title">重命名项目</h2>
+                <label htmlFor="project-name">项目名称</label>
+                <input
+                  id="project-name"
+                  autoFocus
+                  maxLength={120}
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                />
+                {renameProject.error ? (
+                  <p className="inline-error" role="alert">
+                    {renameProject.error.message}
+                  </p>
+                ) : null}
+                <div className="dialog-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={closeProjectDialog}
+                  >
+                    取消
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={!projectName.trim() || renameProject.isPending}
+                  >
+                    {renameProject.isPending ? (
+                      <LoaderCircle className="spin" size={16} />
+                    ) : null}
+                    保存
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div>
+                <p className="eyebrow danger-text">DANGER ZONE</p>
+                <h2 id="project-dialog-title">删除项目？</h2>
+                <p className="dialog-copy">
+                  “{projectDialog.project.name}
+                  ”将从工作区隐藏。项目数据会暂时保留，但活跃任务必须先停止。
+                </p>
+                {archiveProject.error ? (
+                  <p className="inline-error" role="alert">
+                    {archiveProject.error.message}
+                  </p>
+                ) : null}
+                <div className="dialog-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={closeProjectDialog}
+                  >
+                    取消
+                  </button>
+                  <button
+                    className="danger-button"
+                    disabled={archiveProject.isPending}
+                    onClick={() => archiveProject.mutate(projectDialog.project)}
+                  >
+                    {archiveProject.isPending ? (
+                      <LoaderCircle className="spin" size={16} />
+                    ) : (
+                      <Trash2 size={16} />
+                    )}
+                    删除项目
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

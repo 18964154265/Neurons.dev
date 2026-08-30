@@ -1,7 +1,11 @@
 import { errorResponse } from "@/lib/http/errors";
 import { readJson, requestId as resolveRequestId } from "@/lib/http/request";
 import { ProjectRepository } from "@/lib/projects/repository";
-import { projectIdSchema, updateProjectSchema } from "@/lib/projects/schemas";
+import {
+  archiveProjectSchema,
+  projectIdSchema,
+  updateProjectSchema,
+} from "@/lib/projects/schemas";
 import { ProjectService } from "@/lib/projects/service";
 import { requireUser } from "@/lib/supabase/server";
 
@@ -33,6 +37,22 @@ export async function PATCH(request: Request, context: RouteContext) {
     const project = await service.update(validProjectId, input);
 
     return Response.json({ data: project, requestId });
+  } catch (error) {
+    return errorResponse(error, requestId);
+  }
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  const requestId = resolveRequestId(request);
+  try {
+    const { projectId } = await context.params;
+    const validProjectId = projectIdSchema.parse(projectId);
+    const input = archiveProjectSchema.parse(await readJson(request));
+    const { supabase } = await requireUser();
+    const service = new ProjectService(new ProjectRepository(supabase));
+    const result = await service.archive(validProjectId, input.revision);
+
+    return Response.json({ data: result, requestId });
   } catch (error) {
     return errorResponse(error, requestId);
   }
