@@ -49,13 +49,15 @@ cp .env.example .env
 | `OPENROUTER_BASE_URL`                            | 默认 `https://openrouter.ai/api/v1`    |
 | `NEXT_PUBLIC_SUPABASE_URL`                       | Supabase Project URL                   |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`           | Supabase Publishable Key               |
-| `APP_URL`                                        | 本地使用 `http://localhost:3000`       |
+| `APP_URL`                                        | 应用规范 Origin；非 Vercel 环境必填    |
 | `SUPABASE_SECRET_KEY`                            | 当前为可选服务端配置，不得暴露给浏览器 |
-| `VERCEL_TEAM_ID`                                 | 本地 Vercel Sandbox 所属 Team ID       |
-| `VERCEL_PROJECT_ID`                              | 本地 Vercel Sandbox 所属 Project ID    |
-| `VERCEL_TOKEN`                                   | 本地 Vercel Access Token               |
+| `VERCEL_TEAM_ID`                                 | 无 OIDC 时的 Sandbox Team ID           |
+| `VERCEL_PROJECT_ID`                              | 无 OIDC 时的 Sandbox Project ID        |
+| `VERCEL_TOKEN`                                   | 无 OIDC 时的 Sandbox Access Token      |
 
-项目工作区中的真实 Terminal 由 Vercel Sandbox 执行。在 Vercel 部署环境中优先使用平台注入的 `VERCEL_OIDC_TOKEN`；本地开发必须同时配置 `VERCEL_TEAM_ID`、`VERCEL_PROJECT_ID` 和 `VERCEL_TOKEN`。缺少凭据时页面仍可启动，但 Agent 调用 `terminal_run` 会以 `VERCEL_SANDBOX_CREDENTIALS_MISSING` 安全失败，不会回退到宿主机 Shell。
+项目工作区中的真实 Terminal 由 Vercel Sandbox 执行。Vercel 部署应在 **Project Settings → Security → Secure Backend Access with OIDC Federation** 启用 OIDC；SDK 会从 Function/Workflow 的运行时请求上下文自动取得短期 token，不要求它始终出现在 `process.env`。本地开发推荐执行 `vercel link` 和 `vercel env pull` 取得开发 OIDC token。只有在 OIDC 不可用的外部运行环境中，才需要同时配置 `VERCEL_TEAM_ID`、`VERCEL_PROJECT_ID` 和 `VERCEL_TOKEN`。Terminal 认证失败不会回退到宿主机 Shell。
+
+应用内部不会硬编码部署域名。普通环境依次使用 `APP_URL`、`VERCEL_PROJECT_PRODUCTION_URL`、`VERCEL_URL`；检测到 Vercel 时优先使用平台提供的生产/部署域名，并忽略错误配置的 localhost `APP_URL`。三者都不存在时会拒绝启动相关服务，避免生产环境静默回退到本地。本地开发应将 `APP_URL` 设置为实际本地 Origin，例如 `http://localhost:3000`。如果不在 Vercel 中显式配置 `APP_URL`，请确认项目设置已启用 **Automatically expose System Environment Variables**。
 
 如果数据库直连 URI 在本地网络不支持 IPv4，请使用 Supabase Dashboard 提供的 Session Pooler URI。连接串中的密码包含特殊字符时，需要按 URI 规则编码。
 
@@ -81,8 +83,12 @@ cp .env.example .env
 
 在 Supabase Dashboard 中打开 **Authentication → URL Configuration**：
 
-- Site URL：`http://localhost:3000`
-- Redirect URLs：加入 `http://localhost:3000/**`
+- 生产 Site URL：设置为正式部署 Origin，例如 `https://neurons-dev.vercel.app`，不要保留为 localhost。
+- 生产 Redirect URLs：加入精确地址 `https://neurons-dev.vercel.app/auth/callback` 和 `https://neurons-dev.vercel.app/auth/callback?next=/reset-password`。
+- 本地开发 Redirect URLs：按需加入 `http://localhost:3000/auth/callback`。
+- 如果需要支持 Vercel Preview，可额外加入与团队域名匹配的 Vercel Preview 通配规则；生产地址仍使用精确路径。
+
+Supabase 只接受 Redirect URLs 允许列表中的 `emailRedirectTo` / `redirectTo`。地址不匹配时会退回 Site URL，因此 Site URL 仍为 localhost 会导致生产确认邮件跳回本地。如果修改过 Supabase 的 Confirm signup 或 Reset password 邮件模板，本项目应保留 `{{ .ConfirmationURL }}` 作为验证链接，不能直接用 `{{ .SiteURL }}` 拼接回调；`{{ .RedirectTo }}` 只适用于自行实现完整 token 验证链接的模板。
 
 在 **Authentication → Providers → Email** 中确认：
 

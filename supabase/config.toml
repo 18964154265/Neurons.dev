@@ -18,8 +18,10 @@ sql_paths = ["./seed.sql"]
 
 [auth]
 enabled = true
+# Supabase CLI local-development settings only. Hosted production Auth URLs are
+# configured in Supabase Dashboard → Authentication → URL Configuration.
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://127.0.0.1:3000"]
+additional_redirect_urls = ["http://127.0.0.1:3000/**", "http://localhost:3000/**"]
 jwt_expiry = 3600
 enable_signup = true
 

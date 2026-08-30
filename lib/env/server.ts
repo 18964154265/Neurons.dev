@@ -2,6 +2,8 @@ import "server-only";
 
 import { z } from "zod";
 
+import { resolveServerAppOrigin } from "@/lib/urls/app-url";
+
 const serverEnvironmentSchema = z.object({
   DATABASE_URL: z.string().url().startsWith("postgres"),
   OPENROUTER_API_KEY: z.string().min(1),
@@ -10,7 +12,7 @@ const serverEnvironmentSchema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(1).optional(),
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
-  APP_URL: z.url().default("http://localhost:3000"),
+  APP_URL: z.url(),
 });
 
 export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>;
@@ -32,7 +34,7 @@ export function getServerEnvironment(): ServerEnvironment {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-    APP_URL: process.env.APP_URL,
+    APP_URL: resolveServerAppOrigin(process.env),
   });
 
   return cachedEnvironment;

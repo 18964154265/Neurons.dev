@@ -104,3 +104,10 @@
 - 涉及代码文件：`components/workspace/project-workspace.tsx`。
 - 关键数据结构或方法：将 Canvas 导航容器改为语义化 `header`，并在四个 View Tab 实例上局部覆盖 `14px` 字号，避免受全局样式优先级影响。
 - 上下游影响与依赖：仅影响 Editor、Terminal、Web Preview、Trace 四个导航按钮的层级和字体显示；不改变 View 状态、点击行为、Canvas 内容或任何后端依赖。
+
+### fix(deploy): resolve production URLs and sandbox credentials
+
+- Commit：`fix(deploy): resolve production URLs and sandbox credentials`
+- 涉及代码文件：`app/login/page.tsx`、`lib/urls/app-url.ts`、`lib/env/server.ts`、`lib/llm/openrouter.ts`、`lib/tools/sandbox-credentials.ts`、`.env.example`、`README.md`、`supabase/config.toml` 及对应单元测试。
+- 关键数据结构或方法：新增 `resolveServerAppOrigin`、`createAppUrl` 与 `resolveSandboxAccessCredentials`；注册确认、密码重置和 OpenRouter 来源 Header 统一使用经校验的应用 Origin，Vercel Sandbox 在未显式配置 Access Token 时交由 SDK 从运行上下文解析 OIDC。
+- 上下游影响与依赖：生产部署不再静默回退到 localhost；Supabase Hosted Auth 仍需在 Dashboard 配置正式 Site URL 与允许的回调路径。Vercel 部署依赖 Secure Backend Access/OIDC Federation；非 OIDC 环境设置 `VERCEL_TOKEN` 时必须同时提供 Team 与 Project ID，失败不会回退到宿主机执行。

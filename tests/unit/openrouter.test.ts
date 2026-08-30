@@ -76,7 +76,7 @@ describe("OpenRouterLLMClient", () => {
         apiKey: "test-key",
         baseURL: "https://openrouter.ai/api/v1",
         defaultModel: "provider/model",
-        appURL: "http://localhost:3000",
+        appURL: "https://neurons.example.com",
       },
       { create },
     );
@@ -121,8 +121,12 @@ describe("OpenRouterLLMClient", () => {
       readOpenRouterConfiguration({
         OPENROUTER_API_KEY: "key",
         OPENROUTER_DEFAULT_MODEL: "provider/model",
+        APP_URL: "https://neurons.example.com",
       }),
-    ).toMatchObject({ defaultModel: "provider/model" });
+    ).toMatchObject({
+      defaultModel: "provider/model",
+      appURL: "https://neurons.example.com",
+    });
   });
 
   it("coalesces tiny provider text chunks before emitting model events", async () => {
@@ -150,7 +154,7 @@ describe("OpenRouterLLMClient", () => {
         apiKey: "test-key",
         baseURL: "https://openrouter.ai/api/v1",
         defaultModel: "provider/model",
-        appURL: "http://localhost:3000",
+        appURL: "https://neurons.example.com",
       },
       { create },
     );
@@ -173,8 +177,12 @@ describe("OpenRouterLLMClient", () => {
       readOpenRouterConfiguration({
         OPENROUTER_API_KEY: "key",
         OPENROUTER_MODEL: "provider/aliased-model",
+        VERCEL_URL: "neurons-preview.vercel.app",
       }),
-    ).toMatchObject({ defaultModel: "provider/aliased-model" });
+    ).toMatchObject({
+      defaultModel: "provider/aliased-model",
+      appURL: "https://neurons-preview.vercel.app",
+    });
   });
 });
 

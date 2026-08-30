@@ -11,6 +11,7 @@ import {
   emailSchema,
 } from "@/lib/auth/credentials";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { createAppUrl } from "@/lib/urls/app-url";
 
 type AuthMode = "login" | "register";
 type FormState = "idle" | "submitting" | "sent" | "error";
@@ -62,7 +63,12 @@ export default function LoginPage() {
 
       const { data, error } = await supabase.auth.signUp({
         ...credentials.data,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: {
+          emailRedirectTo: createAppUrl(
+            "/auth/callback",
+            window.location.origin,
+          ),
+        },
       });
       if (error) throw error;
       if (data.session) {
@@ -99,7 +105,10 @@ export default function LoginPage() {
       const { error } = await supabase.auth.resetPasswordForEmail(
         validEmail.data,
         {
-          redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+          redirectTo: createAppUrl(
+            "/auth/callback?next=/reset-password",
+            window.location.origin,
+          ),
         },
       );
       if (error) throw error;

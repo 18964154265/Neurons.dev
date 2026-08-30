@@ -14,12 +14,13 @@ import type {
   LLMStreamEvent,
   LLMStreamInput,
 } from "@/lib/llm/types";
+import { resolveServerAppOrigin } from "@/lib/urls/app-url";
 
 const openRouterConfigurationSchema = z.object({
   apiKey: z.string().min(1),
   baseURL: z.url().default("https://openrouter.ai/api/v1"),
   defaultModel: z.string().min(1),
-  appURL: z.url().default("http://localhost:3000"),
+  appURL: z.url(),
 });
 
 export type OpenRouterConfiguration = z.infer<
@@ -97,7 +98,7 @@ export function readOpenRouterConfiguration(
     baseURL: environment.OPENROUTER_BASE_URL,
     defaultModel:
       environment.OPENROUTER_DEFAULT_MODEL ?? environment.OPENROUTER_MODEL,
-    appURL: environment.APP_URL,
+    appURL: resolveServerAppOrigin(environment),
   });
 }
 
