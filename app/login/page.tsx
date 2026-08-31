@@ -71,22 +71,14 @@ export default function LoginPage() {
         },
       });
       if (error) throw error;
-      // Some Supabase configurations return no session from signUp even when
-      // confirmation is disabled. Establish the browser session explicitly.
-      if (!data.session) {
-        const { error: signInError } = await supabase.auth.signInWithPassword(
-          credentials.data,
-        );
-        if (signInError) throw signInError;
-      }
-      if (data.session || mode === "register") {
+      if (data.session) {
         router.replace("/dashboard");
         router.refresh();
         return;
       }
-      setState("sent");
+      setState("error");
       setMessage(
-        "账户已创建，请直接登录。若仍要求确认邮箱，请在 Supabase Authentication → Providers → Email 中关闭 Confirm Email。",
+        "注册成功但未建立登录会话，请确认 Supabase 已关闭 Confirm Email 后重试。",
       );
     } catch (error) {
       setState("error");
