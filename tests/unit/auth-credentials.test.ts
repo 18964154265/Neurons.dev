@@ -34,5 +34,7 @@ describe("auth credential validation", () => {
     expect(authErrorMessage("internal provider detail")).toBe(
       "认证请求失败，请稍后重试。",
     );
+    expect(authErrorMessage("User already registered")).toContain("已经注册");
+    expect(authErrorMessage("Signup is disabled")).toContain("不允许注册");
   });
 });

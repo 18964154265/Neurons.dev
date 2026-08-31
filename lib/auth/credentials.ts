@@ -22,6 +22,15 @@ export function authErrorMessage(message: string) {
     return "邮箱或密码错误。";
   if (normalized.includes("email not confirmed"))
     return "请先打开确认邮件完成邮箱验证。";
+  if (
+    normalized.includes("user already registered") ||
+    normalized.includes("already been registered")
+  )
+    return "该邮箱已经注册，请直接登录；如果忘记密码，请使用密码重置。";
+  if (normalized.includes("signup is disabled"))
+    return "当前暂不允许注册，请联系管理员。";
+  if (normalized.includes("invalid api key") || normalized.includes("apikey"))
+    return "登录服务配置无效，请联系管理员。";
   if (normalized.includes("rate limit")) return "请求过于频繁，请稍后再试。";
   if (normalized.includes("password")) return "密码不符合安全要求。";
   return "认证请求失败，请稍后重试。";

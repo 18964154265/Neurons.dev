@@ -71,7 +71,15 @@ export default function LoginPage() {
         },
       });
       if (error) throw error;
-      if (data.session) {
+      // Some Supabase configurations return no session from signUp even when
+      // confirmation is disabled. Establish the browser session explicitly.
+      if (!data.session) {
+        const { error: signInError } = await supabase.auth.signInWithPassword(
+          credentials.data,
+        );
+        if (signInError) throw signInError;
+      }
+      if (data.session || mode === "register") {
         router.replace("/dashboard");
         router.refresh();
         return;
