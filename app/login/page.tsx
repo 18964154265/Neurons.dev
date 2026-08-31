@@ -78,7 +78,7 @@ export default function LoginPage() {
       }
       setState("sent");
       setMessage(
-        "如果可以创建该账户，确认邮件会发送到你的邮箱；已有账户请直接登录或设置密码。",
+        "账户已创建，请直接登录。若仍要求确认邮箱，请在 Supabase Authentication → Providers → Email 中关闭 Confirm Email。",
       );
     } catch (error) {
       setState("error");
@@ -215,7 +215,10 @@ export default function LoginPage() {
               </div>
             </>
           ) : null}
-          <button className="primary-button" disabled={isSubmitting}>
+          <button
+            className="primary-button"
+            disabled={isSubmitting}
+          >
             {isSubmitting ? <LoaderCircle className="spin" size={17} /> : null}
             {mode === "login" ? "登录" : "注册"}
           </button>

@@ -94,7 +94,7 @@ Supabase 只接受 Redirect URLs 允许列表中的 `emailRedirectTo` / `redirec
 
 - Email Provider 已启用。
 - 用户注册已启用。
-- 是否要求邮箱确认按开发环境需求设置；应用同时支持需要确认和自动确认两种结果。
+- 如需注册后立即进入应用，请关闭 **Confirm Email**；本地 `supabase/config.toml` 已设置 `enable_confirmations = false`。线上环境必须在 Supabase Dashboard 的 **Authentication → Providers → Email** 中关闭同名选项，代码无法替你修改托管项目设置。
 
 已有 Magic Link 账户可以在登录页通过“忘记密码”设置密码，仍会使用原来的 Supabase 用户身份和项目数据。
 
