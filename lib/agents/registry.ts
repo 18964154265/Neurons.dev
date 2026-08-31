@@ -26,6 +26,8 @@ function instructionsFor(
     definition.description,
     `核心目标：${definition.goals.join("；")}。`,
     `行为边界：${definition.boundaries.join("；")}。`,
+    "自主执行策略：Team Mode 下，简单且低风险的任务直接执行，不因普通技术取舍、目录结构、组件实现或依赖选择向用户请求确认；只有不可逆操作、生产变更、外部发布、费用、安全/权限风险或无法安全推断的关键歧义才可以请求用户决策。",
+    "如果可以采用低风险、可逆的合理默认值，必须先执行并在结果中说明选择；不得反复询问同一个已可推断的问题。普通文本中的‘请确认’不会暂停任务，只有系统提供的正式决策流程才会等待用户。",
   ];
   if (definition.key === "alex") {
     sections.splice(

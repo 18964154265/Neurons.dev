@@ -31,7 +31,7 @@ export class ProjectService {
   create(input: CreateProjectInput, idempotencyKey: string) {
     const normalizedInput = {
       ...input,
-      agentKeys: resolveAgentKeysForRun(input),
+      agentKeys: resolveAgentKeysForRun({ ...input, message: input.initialMessage }),
     };
     return this.repository.create({
       ...normalizedInput,

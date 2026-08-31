@@ -13,7 +13,7 @@ describe("default agent scheduling", () => {
     ).toEqual(["alex"]);
   });
 
-  it("assigns Mike to automatic Team Mode", () => {
+  it("assigns Mike to automatic Team Mode for normal work", () => {
     expect(
       resolveAgentKeysForRun({
         mode: "team",
@@ -21,6 +21,17 @@ describe("default agent scheduling", () => {
         agentKeys: [],
       }),
     ).toEqual(["mike"]);
+  });
+
+  it("routes simple low-risk Team Mode work directly to Alex", () => {
+    expect(
+      resolveAgentKeysForRun({
+        mode: "team",
+        scheduleStrategy: "automatic",
+        agentKeys: [],
+        message: "调整按钮颜色和字体",
+      }),
+    ).toEqual(["alex"]);
   });
 
   it("preserves explicit user selection", () => {
